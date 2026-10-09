@@ -1,0 +1,8 @@
+.DS_Store
+# local notes, not part of the release
+RESEARCH.md
+TESTING.md
+# never game data
+*.vpp_xbox2
+*.xex
+*.xtbl
