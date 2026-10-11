@@ -1,4 +1,4 @@
--- Saints Tweaks - table part.
+-- SR Tweak Menu - table part.
 --
 -- Edits the game's tables inside the player's own packfiles. The same tables
 -- live in misc.vpp_xbox2 and misc2.vpp_xbox2, so both are patched.
@@ -146,6 +146,12 @@ local function patch_vehicles(xml)
       end
       if S.scale_steering and S.speed_mult ~= 1 then
         block, n = map_tag(block, "Max_Speed_Steering", function(v) return v * S.speed_mult end); changed = changed + n
+      end
+      if S.nitro_all and not block:find("<Name>sp_eltrain", 1, true) then
+        -- Nitrous (Shift) in every car, so a random car off the street has it too.
+        local c
+        block, c = block:gsub("<Nitro_Capable>%s*false%s*</Nitro_Capable>", "<Nitro_Capable>true</Nitro_Capable>")
+        changed = changed + c
       end
     end
     if S.extra_gravity ~= 0 then

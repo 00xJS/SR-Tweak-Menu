@@ -1,0 +1,258 @@
+-- SR Tweak Menu - the on-screen menu.
+--
+-- Tabs across the top (one per feature category), a cursor down the rows.
+-- Keys: F5 opens and closes, Up/Down move, Left/Right adjust a value or
+-- browse a list, Enter toggles or runs, Backspace closes, PgUp/PgDn change
+-- tab. Controller: Back + D-pad down opens, D-pad moves, A selects, B
+-- closes, LB/RB change tab. While the menu is open the arrows, Enter and
+-- Backspace are taken from the game, and the controller state is blanked,
+-- so the player stands still.
+--
+-- Drawing: Lua cannot put text on screen, so the finished text goes into a
+-- mailbox in guest memory that menu_overlay.dll (same folder) shows with the
+-- loader's overlay text. Without the DLL (the Mac build) every action shows
+-- a one-line HUD message instead and the menu is driven blind.
+
+local G = require("game")
+local F = require("features")
+local S = wml.setting
+
+local M = { open = false, tab = 1, cursor = {}, scroll = {}, status = "", status_until = 0, dll = false, pad = 0, page = nil }
+
+local MAILBOX, MAGIC = 0x00F00000, 0x53524D55
+local TEXT_OFFSET, TEXT_MAX = 0x40, 8192
+local ROWS = S("menu_rows", 12)
+local WINDOWS = package.config:sub(1, 1) == "\\"  -- the mailbox exists only in the Windows build
+local use_overlay = S("menu_overlay", true) and WINDOWS
+
+local KEY = {
+  open = tostring(S("menu_key", "F5")), up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT",
+  enter = "ENTER", back = "BACKSPACE", prev = "PAGEUP", next = "PAGEDOWN", fast = "SHIFT",
+}
+local TAKEN = { "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "BACKSPACE" }
+local PAD = { UP = 0x1, DOWN = 0x2, LEFT = 0x4, RIGHT = 0x8, START = 0x10, BACK = 0x20, LB = 0x100, RB = 0x200, A = 0x1000, B = 0x2000 }
+local block_input = S("menu_blocks_input", true)
+
+for i = 1, #F.categories do M.cursor[i] = 1; M.scroll[i] = 1 end
+
+local function say(text)
+  if not text then return end
+  M.status, M.status_until = text, M.tick + 150
+  if not M.dll then G.hud(text) end
+end
+
+local function current_item()
+  local cat = F.categories[M.tab]
+  return cat.items[M.cursor[M.tab]], cat
+end
+
+-- A list item's own page: every entry on its own row, Enter picks one.
+local function open_page(it)
+  M.page = { item = it, cursor = it.v, scroll = math.max(1, it.v - ROWS // 2) }
+end
+local function page_move(dir)
+  local pg = M.page
+  local n = #pg.item.items
+  pg.cursor = ((pg.cursor - 1 + dir) % n) + 1
+  if pg.cursor < pg.scroll then pg.scroll = pg.cursor end
+  if pg.cursor >= pg.scroll + ROWS then pg.scroll = pg.cursor - ROWS + 1 end
+  if not M.dll then say(pg.item.items[pg.cursor][2]) end
+end
+
+-- ------------------------------------------------------------- mailbox
+local seq, last_text = 0, nil
+local function mailbox_write(text)
+  if text == last_text then return end
+  last_text = text
+  local n = math.min(#text, TEXT_MAX)
+  local base = MAILBOX + TEXT_OFFSET
+  local i = 1
+  while i + 3 <= n do
+    wml.write_u32(base + i - 1, (text:byte(i) << 24) | (text:byte(i + 1) << 16) | (text:byte(i + 2) << 8) | text:byte(i + 3))
+    i = i + 4
+  end
+  while i <= n do wml.write_u8(base + i - 1, text:byte(i)); i = i + 1 end
+  wml.write_u32(MAILBOX + 0x14, n)
+  seq = seq + 1
+  wml.write_u32(MAILBOX + 0x10, seq)
+end
+
+local function check_dll()
+  if not use_overlay then M.dll = false return end
+  local had = M.dll
+  M.dll = wml.read_u32(MAILBOX) == MAGIC
+  if M.dll ~= had then wml.log(M.dll and "menu: overlay DLL found" or "menu: overlay DLL not found; HUD messages instead") end
+end
+
+-- ------------------------------------------------------------- open/close
+local function set_open(open)
+  if open == M.open then return end
+  M.open = open
+  for _, k in ipairs(TAKEN) do wml.take_key(k, open) end
+  if open then
+    check_dll()
+    say(M.dll and "" or "Menu open (no overlay): " .. current_item().label)
+  else
+    M.page = nil
+    last_text = nil
+    if M.dll then mailbox_write("") end
+  end
+end
+
+-- ------------------------------------------------------------- navigation
+local function move(dir)
+  local cat = F.categories[M.tab]
+  local n = #cat.items
+  M.cursor[M.tab] = ((M.cursor[M.tab] - 1 + dir) % n) + 1
+  local c, s = M.cursor[M.tab], M.scroll[M.tab]
+  if c < s then M.scroll[M.tab] = c end
+  if c >= s + ROWS then M.scroll[M.tab] = c - ROWS + 1 end
+  if not M.dll then
+    local it = current_item()
+    say(it.label .. " " .. F.value_text(it))
+  end
+end
+
+local function switch_tab(dir)
+  local n = #F.categories
+  M.tab = ((M.tab - 1 + dir) % n) + 1
+  if not M.dll then say("Tab: " .. F.categories[M.tab].name) end
+end
+
+local function adjust(ctx, dir)
+  if M.page then page_move(dir * ROWS) return end
+  local it = current_item()
+  if it.kind == "value" or it.kind == "choice" or it.kind == "list" then
+    say(F.adjust(ctx, it, dir, wml.key_down(KEY.fast)))
+  elseif it.kind == "toggle" then
+    say(F.toggle(ctx, it))
+  end
+end
+
+local function activate(ctx)
+  if M.page then
+    local it = M.page.item
+    it.v = M.page.cursor
+    say(F.activate(ctx, it))
+    return
+  end
+  local it = current_item()
+  if it.kind == "list" then open_page(it) return end
+  say(F.activate(ctx, it))
+end
+
+-- ------------------------------------------------------------- input
+-- Keys repeat while held: first after 14 updates, then every 4.
+local held = {}
+local function repeating(name, down)
+  if not down then held[name] = nil return false end
+  local h = held[name]
+  if not h then held[name] = 14 return true end
+  h = h - 1
+  if h <= 0 then held[name] = 4 return true end
+  held[name] = h
+  return false
+end
+
+local pad_prev = 0
+local function pad_pressed(bit) return (M.pad & bit) ~= 0 and (pad_prev & bit) == 0 end
+local function pad_down(bit) return (M.pad & bit) ~= 0 end
+
+function M.input(ctx, tick)
+  M.tick = tick
+  if tick % 100 == 0 then check_dll() end
+  -- Open / close.
+  if KEY.open ~= "" and wml.key_pressed(KEY.open) then set_open(not M.open) end
+  if pad_down(PAD.BACK) and pad_pressed(PAD.DOWN) then set_open(not M.open) end
+  if M.open then
+    if wml.key_pressed(KEY.back) or pad_pressed(PAD.B) then
+      if M.page then M.page = nil else set_open(false) end
+    elseif M.page then
+      if repeating("up", wml.key_down(KEY.up) or pad_down(PAD.UP)) then page_move(-1) end
+      if repeating("down", wml.key_down(KEY.down) or (pad_down(PAD.DOWN) and not pad_down(PAD.BACK))) then page_move(1) end
+      if repeating("left", wml.key_down(KEY.left) or pad_down(PAD.LEFT)) then adjust(ctx, -1) end
+      if repeating("right", wml.key_down(KEY.right) or pad_down(PAD.RIGHT)) then adjust(ctx, 1) end
+      if wml.key_pressed(KEY.enter) or pad_pressed(PAD.A) then activate(ctx) end
+    else
+      if repeating("up", wml.key_down(KEY.up) or pad_down(PAD.UP)) then move(-1) end
+      if repeating("down", wml.key_down(KEY.down) or (pad_down(PAD.DOWN) and not pad_down(PAD.BACK))) then move(1) end
+      if repeating("left", wml.key_down(KEY.left) or pad_down(PAD.LEFT)) then adjust(ctx, -1) end
+      if repeating("right", wml.key_down(KEY.right) or pad_down(PAD.RIGHT)) then adjust(ctx, 1) end
+      if wml.key_pressed(KEY.enter) or pad_pressed(PAD.A) then activate(ctx) end
+      if wml.key_pressed(KEY.prev) or pad_pressed(PAD.LB) then switch_tab(-1) end
+      if wml.key_pressed(KEY.next) or pad_pressed(PAD.RB) then switch_tab(1) end
+    end
+  end
+  pad_prev = M.pad
+end
+
+-- Called from the controller-read hook with the buttons word; returns true
+-- when the game should see no input (menu open).
+function M.controller(buttons)
+  M.pad = buttons
+  return M.open and block_input
+end
+
+-- ------------------------------------------------------------- drawing
+local function pad_right(s, n)
+  if #s >= n then return s end
+  return s .. string.rep(" ", n - #s)
+end
+
+function M.render(tick)
+  if not M.dll then return end
+  if not M.open then return end
+  local lines = {}
+  local tabs = {}
+  for i, cat in ipairs(F.categories) do
+    tabs[#tabs + 1] = (i == M.tab) and ("[ " .. cat.name .. " ]") or ("  " .. cat.name .. "  ")
+  end
+  lines[#lines + 1] = "SR TWEAK MENU" .. (F.enabled and "" or "   (all tweaks OFF)")
+  if M.page then
+    local pg = M.page
+    local list = pg.item.items
+    lines[#lines + 1] = pg.item.label .. "   (" .. pg.cursor .. " of " .. #list .. ")"
+    lines[#lines + 1] = ""
+    local s = pg.scroll
+    local e = math.min(#list, s + ROWS - 1)
+    if s > 1 then lines[#lines + 1] = "    ..." end
+    for i = s, e do
+      local entry = list[i]
+      local extra = entry[3] and ("   " .. entry[3]) or ""
+      lines[#lines + 1] = ((i == pg.cursor) and "> " or "  ") .. pad_right(entry[2], 28) .. extra
+    end
+    if e < #list then lines[#lines + 1] = "    ..." end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "Up/Down move   Left/Right page   Enter pick   Backspace back"
+    if M.status ~= "" and tick < M.status_until then lines[#lines + 1] = M.status end
+    mailbox_write(table.concat(lines, "\n"))
+    return
+  end
+  lines[#lines + 1] = table.concat(tabs, " ")
+  lines[#lines + 1] = ""
+  local cat = F.categories[M.tab]
+  local s = M.scroll[M.tab]
+  local e = math.min(#cat.items, s + ROWS - 1)
+  if s > 1 then lines[#lines + 1] = "    ..." end
+  for i = s, e do
+    local it = cat.items[i]
+    local cursor = (i == M.cursor[M.tab]) and "> " or "  "
+    local value = F.value_text(it)
+    if it.kind == "action" then value = "" end
+    if it.kind == "list" then value = "> " .. it.items[it.v][2] end
+    lines[#lines + 1] = cursor .. pad_right(it.label, 32) .. value
+  end
+  if e < #cat.items then lines[#lines + 1] = "    ..." end
+  lines[#lines + 1] = ""
+  local it = current_item()
+  local help = it.help or ""
+  if it.kind == "value" then help = help .. (help ~= "" and "  " or "") .. "Default " .. it.fmt(it.default) .. "." end
+  if help ~= "" then lines[#lines + 1] = help end
+  lines[#lines + 1] = "Up/Down move   Left/Right adjust   Enter select   PgUp/PgDn tab   " .. KEY.open .. " close"
+  if M.status ~= "" and tick < M.status_until then lines[#lines + 1] = M.status end
+  mailbox_write(table.concat(lines, "\n"))
+end
+
+function M.is_open() return M.open end
+
+return M

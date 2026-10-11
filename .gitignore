@@ -6,3 +6,6 @@ TESTING.md
 *.vpp_xbox2
 *.xex
 *.xtbl
+# local research only, never part of the release
+research/
+__pycache__/
