@@ -139,6 +139,9 @@ local function make_ctx()
 end
 
 -- ---------------------------------------------------------------- run
+-- The game is always the Windows build (under Wine on the Mac), and menu.lua
+-- draws through the overlay only there; look like it on any host.
+package.config = "\\" .. package.config:sub(2)
 dofile(folder .. "/main.lua")
 assert(hooks[0x82209E30], "update hook missing")
 assert(hooks[0x82788EC4], "input hook missing")
@@ -289,6 +292,69 @@ end
 press("BACKSPACE")
 assert(not taken["UP"], "keys not released")
 assert(read_u32(0x00F00014) == 0, "text not hidden")
+
+-- Controller: RB + D-pad down opens and closes the menu, and the D-pad press
+-- never reaches the game (it is Cancel Activity there).
+do
+  local MENU = require("menu")
+  local STATE = 0x49000000
+  local RB, LB, DOWN, A, B = 0x200, 0x100, 0x2, 0x1000, 0x2000
+  -- One controller read (what the game then sees) followed by one update.
+  local function pad(buttons)
+    write_u16(STATE + 4, buttons); write_u8(STATE + 6, 0); write_u8(STATE + 7, 0)
+    local ctx = make_ctx(); ctx.regs[3] = 0; ctx.regs[5] = STATE
+    hooks[0x82788EC4](ctx)
+    local seen = read_u16(STATE + 4)
+    update(1)
+    return seen
+  end
+  assert(not MENU.is_open(), "menu should start closed")
+  assert(pad(RB) == RB, "RB alone must reach the game (sprint)")
+  assert(pad(RB | DOWN) == RB, "D-pad down leaked to the game with RB held")
+  assert(MENU.is_open(), "RB + D-pad down did not open the menu")
+  assert(taken["SHIFT"] and taken["R"] and taken["Q"], "keyboard keys mapped onto the pad not taken")
+  assert(pad(RB | DOWN) == 0, "the game should see nothing while the menu is open")
+  MENU.tab = 1
+  pad(RB); pad(0)
+  assert(MENU.tab == 1, "letting go of the RB that opened the menu changed tab")
+  pad(RB)
+  assert(MENU.tab == 1, "RB changed tab on press, before knowing it is not the combo")
+  pad(0)
+  assert(MENU.tab == 2, "an RB tap did not change tab")
+  pad(LB); pad(0)
+  assert(MENU.tab == 1, "LB did not change tab")
+  local c = MENU.cursor[1]
+  pad(DOWN); pad(0)
+  assert(MENU.cursor[1] == c + 1, "D-pad down did not move the cursor")
+  assert(mailbox_text():find("A select", 1, true) and mailbox_text():find("RB + D-pad Down close", 1, true), "controller hints not shown")
+  press("UP")
+  assert(mailbox_text():find("Enter select", 1, true), "keyboard hints not back after a key")
+  local cur = MENU.cursor[1]
+  pad(RB); pad(RB | DOWN)
+  assert(not MENU.is_open(), "the combo did not close the menu")
+  assert(MENU.tab == 1 and MENU.cursor[1] == cur, "the closing combo also moved the menu")
+  assert(pad(RB | DOWN) == 0, "buttons held from the menu leaked to the game")
+  assert(not MENU.is_open(), "holding the combo reopened the menu")
+  pad(0)
+  assert(pad(RB) == RB, "RB must reach the game again once let go")
+  pad(0)
+  -- B closes, and that B never reaches the game.
+  pad(RB); pad(RB | DOWN); pad(0)
+  assert(MENU.is_open(), "menu did not reopen")
+  pad(B)
+  assert(not MENU.is_open(), "B did not close the menu")
+  assert(pad(B) == 0, "the B that closed the menu reached the game")
+  pad(0)
+  assert(pad(B) == B, "B must reach the game after it is let go")
+  pad(0)
+  -- PlayStation names and other combos.
+  local h, p = MENU.parse_combo("R1+DOWN"); assert(h == RB and p == DOWN, "R1 is not RB")
+  h, p = MENU.parse_combo("l2 + cross"); assert(h == MENU.PAD.LT and p == A, "L2 + Cross wrong")
+  h, p = MENU.parse_combo("LB+RB+DPAD_DOWN"); assert(h == LB | RB and p == DOWN, "three-button combo wrong")
+  assert(MENU.parse_combo("RB+NOPE") == nil, "unknown button accepted")
+  h, p = MENU.parse_combo(""); assert(h == 0 and p == 0, "empty combo should mean none")
+  print("controller: combo, tabs, hints and swallowed buttons OK")
+end
 
 print(string.format("\n%d script calls, %d console lines, %d HUD messages, %d errors", #scripts, #consoles, #hud_texts, errors))
 for _, s in ipairs(scripts) do print("  script: " .. s) end
