@@ -159,11 +159,19 @@ wml.hook(G.INPUT_GET_STATE, function(ctx)
   local user, state = ctx:r(3), ctx:r(5)
   ctx:call_original()
   if user ~= 0 or state == 0 or (ctx:r(3) & 0xFFFFFFFF) ~= 0 then return end
-  if MENU.controller(read_u16(state + 4)) then
+  local buttons = read_u16(state + 4)
+  local blank, hide = MENU.controller(buttons, read_u8(state + 6), read_u8(state + 7))
+  if blank then
     -- Menu open: the game sees a pad with nothing pressed.
     write_u16(state + 4, 0); write_u8(state + 6, 0); write_u8(state + 7, 0)
     for i = 8, 14, 2 do write_u16(state + i, 0) end
     return
+  end
+  if hide ~= 0 then
+    -- The menu combo's D-pad press, or buttons still held from the menu.
+    write_u16(state + 4, buttons & ~hide & 0xFFFF)
+    if (hide & MENU.PAD.LT) ~= 0 then write_u8(state + 6, 0) end
+    if (hide & MENU.PAD.RT) ~= 0 then write_u8(state + 7, 0) end
   end
   if not auto_fire then return end
   local rt = read_u8(state + 7)

@@ -25,11 +25,19 @@ parties, not public matches.
 
 ## The menu
 
-**F5** opens and closes it (controller: hold Back, press D-pad down). Up and
-Down move, Left and Right change a value or browse a list, Enter switches a
-feature on or off or runs it, PgUp and PgDn change tab (LB/RB), Backspace or
-B closes. While it is open the game gets no movement input, so you stand
-still. Keys and rows per page are in `mod.ini`.
+**F5** opens and closes it, or on a controller **hold RB and press D-pad
+down** (R1 + D-pad down on a PlayStation pad). Up and Down move, Left and
+Right change a value or browse a list, Enter switches a feature on or off or
+runs it, PgUp and PgDn change tab, Backspace closes. On a controller: D-pad,
+A selects, B goes back or closes, LB/RB change tab. The hints at the bottom
+follow whichever you last used.
+
+Every controller (Xbox, PlayStation, Switch and others) reaches the game as
+an Xbox pad, so the buttons are named the Xbox way. The combo is
+`menu_pad` in `mod.ini` (for example `LB+RB+DOWN`, or PlayStation names such
+as `R1+DOWN`). While RB is held, D-pad down is kept from the game, so the
+combo never cancels an activity. While the menu is open the game gets no
+input, so you stand still. Keys and rows per page are in `mod.ini`.
 
 | Tab | What is there |
 |---|---|
@@ -105,7 +113,7 @@ is ticked.
 ## How it works
 
 `patch.lua` edits the game's own tables inside your packfiles before the
-game starts (vehicles, weapons, melee, ranks, camera, sprint, constants).
+game starts (vehicles, weapons, ranks, camera, sprint, constants).
 Nothing is shipped from the game; the loader rebuilds the tables from your
 copy and caches them.
 
@@ -122,7 +130,8 @@ commands such as `super_ragdoll` and `hood_win_all`.
 A Lua mod cannot draw on screen, so `menu_overlay.dll` (Windows, source in
 `menu_overlay.c`, about a hundred lines) does only that: `main.lua` writes
 the menu text into a mailbox in guest memory and the DLL shows it with the
-loader's text overlay. Without the DLL (the Mac build) every action shows a
+loader's text overlay; on the Mac the game runs as the Windows build under
+Wine, so the DLL works there too. Without the DLL every action shows a
 one-line HUD message instead. Build it with the clang that ships with Saints
 Reborn:
 

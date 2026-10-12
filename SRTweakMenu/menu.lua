@@ -3,15 +3,22 @@
 -- Tabs across the top (one per feature category), a cursor down the rows.
 -- Keys: F5 opens and closes, Up/Down move, Left/Right adjust a value or
 -- browse a list, Enter toggles or runs, Backspace closes, PgUp/PgDn change
--- tab. Controller: Back + D-pad down opens, D-pad moves, A selects, B
--- closes, LB/RB change tab. While the menu is open the arrows, Enter and
--- Backspace are taken from the game, and the controller state is blanked,
--- so the player stands still.
+-- tab. Controller: RB + D-pad down opens and closes (menu_pad), D-pad moves,
+-- A selects, B goes back, LB/RB change tab.
+--
+-- Every controller reaches the game as an Xbox pad, after Saints Reborn has
+-- mapped it (RB is R1 on a PlayStation pad). On Windows, and on the Mac,
+-- where the same build runs under Wine, the keyboard is mapped onto that
+-- pad too (Shift is RB, the arrows are the D-pad). So while the menu is open
+-- every mapped key is taken from that mapping, leaving the pad to real
+-- controllers, and the controller state is blanked so the player stands
+-- still. Buttons still held when the menu closes stay hidden from the game
+-- until they are let go, so the B that closed it doesn't also hit someone.
 --
 -- Drawing: Lua cannot put text on screen, so the finished text goes into a
 -- mailbox in guest memory that menu_overlay.dll (same folder) shows with the
--- loader's overlay text. Without the DLL (the Mac build) every action shows
--- a one-line HUD message instead and the menu is driven blind.
+-- loader's overlay text. Without the DLL every action shows a one-line HUD
+-- message instead and the menu is driven blind.
 
 local G = require("game")
 local F = require("features")
@@ -29,11 +36,58 @@ local KEY = {
   open = tostring(S("menu_key", "F5")), up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT",
   enter = "ENTER", back = "BACKSPACE", prev = "PAGEUP", next = "PAGEDOWN", fast = "SHIFT",
 }
-local TAKEN = { "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "BACKSPACE" }
-local PAD = { UP = 0x1, DOWN = 0x2, LEFT = 0x4, RIGHT = 0x8, START = 0x10, BACK = 0x20, LB = 0x100, RB = 0x200, A = 0x1000, B = 0x2000 }
+-- Taken while open: the menu's own keys, and every key Saints Reborn maps
+-- onto the pad on foot or in a car (kbm.cpp), so they read as keys only.
+local TAKEN = { "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "BACKSPACE",
+  "W", "A", "S", "D", "Q", "E", "R", "F", "C", "V", "X", "Z", "SPACE", "SHIFT", "CTRL", "TAB" }
+-- XINPUT_GAMEPAD bits; LT and RT are analog and get bits of their own.
+local PAD = { UP = 0x1, DOWN = 0x2, LEFT = 0x4, RIGHT = 0x8, START = 0x10, BACK = 0x20, LS = 0x40, RS = 0x80,
+  LB = 0x100, RB = 0x200, A = 0x1000, B = 0x2000, X = 0x4000, Y = 0x8000, LT = 0x10000, RT = 0x20000 }
+M.PAD = PAD
+local TRIGGER_PRESSED = 85  -- of 255: a trigger a third of the way in counts as pressed
+local PAD_ALIAS = {
+  R1 = "RB", L1 = "LB", R2 = "RT", L2 = "LT", R3 = "RS", L3 = "LS",
+  CROSS = "A", CIRCLE = "B", SQUARE = "X", TRIANGLE = "Y",
+  OPTIONS = "START", MENU = "START", SHARE = "BACK", SELECT = "BACK", VIEW = "BACK",
+  DPAD_UP = "UP", DPAD_DOWN = "DOWN", DPAD_LEFT = "LEFT", DPAD_RIGHT = "RIGHT",
+}
+local PAD_LABEL = { UP = "D-pad Up", DOWN = "D-pad Down", LEFT = "D-pad Left", RIGHT = "D-pad Right" }
 local block_input = S("menu_blocks_input", true)
 
+-- The controller combo (menu_pad): hold every button but the last, press the
+-- last. While the held ones are down the last one is kept from the game, so
+-- RB + D-pad down never reaches the game as Cancel Activity.
+local combo_hold, combo_press, combo_text = 0, 0, ""
+local function parse_combo(text)
+  local hold, press, names = 0, 0, {}
+  for raw in text:gmatch("[^+%s]+") do
+    local name = raw:upper()
+    name = PAD_ALIAS[name] or name
+    if not PAD[name] then return nil, raw end
+    hold = hold | press
+    press = PAD[name]
+    names[#names + 1] = PAD_LABEL[name] or name
+  end
+  if press == 0 then return 0, 0, "" end
+  return hold, press, table.concat(names, " + ")
+end
+do
+  local text = tostring(S("menu_pad", "RB+DOWN"))
+  local hold, press, label = parse_combo(text)
+  if not hold then
+    wml.log("menu_pad: unknown button '" .. press .. "' in '" .. text .. "'; using RB+DOWN")
+    hold, press, label = parse_combo("RB+DOWN")
+  end
+  combo_hold, combo_press, combo_text = hold, press, label
+end
+M.combo_text = combo_text
+M.parse_combo = parse_combo
+
 for i = 1, #F.categories do M.cursor[i] = 1; M.scroll[i] = 1 end
+
+local swallow = 0   -- pad bits held when the menu closed, hidden until let go
+local tap_armed, tapped = 0, 0  -- see track_taps
+local device = "keys"  -- what the hints at the bottom name: "keys" or "pad"
 
 local function say(text)
   if not text then return end
@@ -89,6 +143,7 @@ local function set_open(open)
   if open == M.open then return end
   M.open = open
   for _, k in ipairs(TAKEN) do wml.take_key(k, open) end
+  tap_armed = 0
   if open then
     check_dll()
     say(M.dll and "" or "Menu open (no overlay): " .. current_item().label)
@@ -155,42 +210,86 @@ local function repeating(name, down)
 end
 
 local pad_prev = 0
-local function pad_pressed(bit) return (M.pad & bit) ~= 0 and (pad_prev & bit) == 0 end
-local function pad_down(bit) return (M.pad & bit) ~= 0 end
+-- Buttons for menu actions: the combo's last button doesn't count while the
+-- held ones are down, so the combo that closes the menu doesn't also move it.
+local function nav()
+  if combo_hold ~= 0 and (M.pad & combo_hold) == combo_hold then return M.pad & ~combo_press end
+  return M.pad
+end
+local function nav_prev()
+  if combo_hold ~= 0 and (pad_prev & combo_hold) == combo_hold then return pad_prev & ~combo_press end
+  return pad_prev
+end
+local function pad_down(bit) return (nav() & bit) ~= 0 end
+-- A button held for the combo (RB) acts when it is let go, and only if no
+-- other button was pressed meanwhile; any other button acts when pressed.
+local function track_taps()
+  tap_armed = tap_armed | (M.pad & ~pad_prev & combo_hold)
+  if (M.pad & ~combo_hold) ~= 0 then tap_armed = 0 end
+  tapped = tap_armed & ~M.pad
+  tap_armed = tap_armed & M.pad
+end
+local function pad_hit(bit)
+  if (combo_hold & bit) ~= 0 then return (tapped & bit) ~= 0 end
+  return (nav() & bit) ~= 0 and (nav_prev() & bit) == 0
+end
+
+local DEVICE_KEYS = { "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "BACKSPACE", "PAGEUP", "PAGEDOWN" }
+local function track_device()
+  if KEY.open ~= "" and wml.key_down(KEY.open) then device = "keys" return end
+  for _, k in ipairs(DEVICE_KEYS) do
+    if wml.key_down(k) then device = "keys" return end
+  end
+  if (M.pad & ~pad_prev) ~= 0 then device = "pad" end
+end
 
 function M.input(ctx, tick)
   M.tick = tick
   if tick % 100 == 0 then check_dll() end
+  track_taps()
+  track_device()
   -- Open / close.
   if KEY.open ~= "" and wml.key_pressed(KEY.open) then set_open(not M.open) end
-  if pad_down(PAD.BACK) and pad_pressed(PAD.DOWN) then set_open(not M.open) end
+  if combo_press ~= 0 and (M.pad & combo_hold) == combo_hold and (M.pad & combo_press) ~= 0 and (pad_prev & combo_press) == 0 then
+    set_open(not M.open)
+  end
   if M.open then
-    if wml.key_pressed(KEY.back) or pad_pressed(PAD.B) then
+    if wml.key_pressed(KEY.back) or pad_hit(PAD.B) then
       if M.page then M.page = nil else set_open(false) end
     elseif M.page then
       if repeating("up", wml.key_down(KEY.up) or pad_down(PAD.UP)) then page_move(-1) end
-      if repeating("down", wml.key_down(KEY.down) or (pad_down(PAD.DOWN) and not pad_down(PAD.BACK))) then page_move(1) end
+      if repeating("down", wml.key_down(KEY.down) or pad_down(PAD.DOWN)) then page_move(1) end
       if repeating("left", wml.key_down(KEY.left) or pad_down(PAD.LEFT)) then adjust(ctx, -1) end
       if repeating("right", wml.key_down(KEY.right) or pad_down(PAD.RIGHT)) then adjust(ctx, 1) end
-      if wml.key_pressed(KEY.enter) or pad_pressed(PAD.A) then activate(ctx) end
+      if wml.key_pressed(KEY.enter) or pad_hit(PAD.A) then activate(ctx) end
     else
       if repeating("up", wml.key_down(KEY.up) or pad_down(PAD.UP)) then move(-1) end
-      if repeating("down", wml.key_down(KEY.down) or (pad_down(PAD.DOWN) and not pad_down(PAD.BACK))) then move(1) end
+      if repeating("down", wml.key_down(KEY.down) or pad_down(PAD.DOWN)) then move(1) end
       if repeating("left", wml.key_down(KEY.left) or pad_down(PAD.LEFT)) then adjust(ctx, -1) end
       if repeating("right", wml.key_down(KEY.right) or pad_down(PAD.RIGHT)) then adjust(ctx, 1) end
-      if wml.key_pressed(KEY.enter) or pad_pressed(PAD.A) then activate(ctx) end
-      if wml.key_pressed(KEY.prev) or pad_pressed(PAD.LB) then switch_tab(-1) end
-      if wml.key_pressed(KEY.next) or pad_pressed(PAD.RB) then switch_tab(1) end
+      if wml.key_pressed(KEY.enter) or pad_hit(PAD.A) then activate(ctx) end
+      if wml.key_pressed(KEY.prev) or pad_hit(PAD.LB) then switch_tab(-1) end
+      if wml.key_pressed(KEY.next) or pad_hit(PAD.RB) then switch_tab(1) end
     end
   end
   pad_prev = M.pad
 end
 
--- Called from the controller-read hook with the buttons word; returns true
--- when the game should see no input (menu open).
-function M.controller(buttons)
-  M.pad = buttons
-  return M.open and block_input
+-- Called from the controller-read hook with the buttons word and the two
+-- triggers. Returns true when the game should see no input at all (menu
+-- open), else a mask of PAD bits to hide from the game: the combo's last
+-- button while the held ones are down, and whatever was still held when the
+-- menu closed, until it is let go.
+function M.controller(buttons, lt, rt)
+  local pad = buttons | ((lt or 0) >= TRIGGER_PRESSED and PAD.LT or 0) | ((rt or 0) >= TRIGGER_PRESSED and PAD.RT or 0)
+  M.pad = pad
+  if M.open and block_input then
+    swallow = pad
+    return true, 0
+  end
+  swallow = swallow & pad
+  if combo_press ~= 0 and (pad & combo_hold) == combo_hold then swallow = swallow | (pad & combo_press) end
+  return false, swallow
 end
 
 -- ------------------------------------------------------------- drawing
@@ -223,7 +322,8 @@ function M.render(tick)
     end
     if e < #list then lines[#lines + 1] = "    ..." end
     lines[#lines + 1] = ""
-    lines[#lines + 1] = "Up/Down move   Left/Right page   Enter pick   Backspace back"
+    lines[#lines + 1] = device == "pad" and "D-pad move   Left/Right page   A pick   B back"
+      or "Up/Down move   Left/Right page   Enter pick   Backspace back"
     if M.status ~= "" and tick < M.status_until then lines[#lines + 1] = M.status end
     mailbox_write(table.concat(lines, "\n"))
     return
@@ -248,7 +348,11 @@ function M.render(tick)
   local help = it.help or ""
   if it.kind == "value" then help = help .. (help ~= "" and "  " or "") .. "Default " .. it.fmt(it.default) .. "." end
   if help ~= "" then lines[#lines + 1] = help end
-  lines[#lines + 1] = "Up/Down move   Left/Right adjust   Enter select   PgUp/PgDn tab   " .. KEY.open .. " close"
+  if device == "pad" then
+    lines[#lines + 1] = "D-pad move   Left/Right adjust   A select   LB/RB tab   B close" .. (combo_text ~= "" and ("   " .. combo_text .. " close") or "")
+  else
+    lines[#lines + 1] = "Up/Down move   Left/Right adjust   Enter select   PgUp/PgDn tab   " .. KEY.open .. " close"
+  end
   if M.status ~= "" and tick < M.status_until then lines[#lines + 1] = M.status end
   mailbox_write(table.concat(lines, "\n"))
 end

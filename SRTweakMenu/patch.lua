@@ -8,7 +8,6 @@
 --   weapons.xtbl         Refire_Delay, Trigger_Type, npc_refire_delay,
 --                        Player_Spread_Min/Max, Magazine_Size, NPC_Damage,
 --                        Ragdoll_Force_Shoot
---   melee.xtbl           PlayerDamage, ImpactForce per melee move
 --   camera_free.xtbl     crouch_damping, crouch_max_accel
 --   metered_sprint.xtbl  UseTime, RechargeTime
 --
@@ -17,22 +16,22 @@
 local PACKS = { "misc.vpp_xbox2", "misc2.vpp_xbox2" }
 
 local S = {
-  uniform        = wml.setting("vehicle_uniform", true),
+  uniform        = wml.setting("vehicle_uniform", false),
   uniform_speed  = wml.setting("vehicle_uniform_speed", 140),
   torque_per_kg  = wml.setting("vehicle_torque_per_kg", 0.45),
   reference      = wml.setting("vehicle_reference", "car_2dr_exoticsports01"),
-  accel_mult     = wml.setting("vehicle_acceleration_multiplier", 2.0),
+  accel_mult     = wml.setting("vehicle_acceleration_multiplier", 1.0),
   nitro_all      = wml.setting("vehicle_nitrous_everywhere", true),
   shotgun_mult   = wml.setting("shotgun_fire_rate_multiplier", 2.0),
-  npc_health     = wml.setting("npc_health_multiplier", 0.2),
+  npc_health     = wml.setting("npc_health_multiplier", 1),
   player_health  = wml.setting("player_health_multiplier", 3),
   knockdown      = wml.setting("player_knockdown_multiplier", 100),
-  melee_impulse  = wml.setting("melee_impulse_multiplier", 3),
+  melee_impulse  = wml.setting("melee_impulse_multiplier", 1),
   fall_velocity  = wml.setting("panic_fall_velocity", 100),
-  speed_mult     = wml.setting("vehicle_speed_multiplier", 1.5),
+  speed_mult     = wml.setting("vehicle_speed_multiplier", 1.0),
   speed_min      = wml.setting("vehicle_speed_min", 0),
   speed_max      = wml.setting("vehicle_speed_max", 0),
-  torque_mult    = wml.setting("vehicle_torque_multiplier", 1.25),
+  torque_mult    = wml.setting("vehicle_torque_multiplier", 1.0),
   extra_gravity  = wml.setting("vehicle_extra_gravity", 5),
   scale_steering = wml.setting("vehicle_scale_steering", true),
   fire_mult      = wml.setting("fire_rate_multiplier", 2.0),
@@ -41,9 +40,9 @@ local S = {
   npc_fire       = wml.setting("npc_fire_rate", false),
   spread_mult    = wml.setting("spread_multiplier", 0.05),
   min_magazine   = wml.setting("min_magazine", 8),
-  damage_mult    = wml.setting("damage_multiplier", 10),
+  damage_mult    = wml.setting("damage_multiplier", 1),
   force_mult     = wml.setting("ragdoll_force_multiplier", 3),
-  hitpoints_mult = wml.setting("vehicle_hitpoints_multiplier", 5),
+  hitpoints_mult = wml.setting("vehicle_hitpoints_multiplier", 1),
   crouch_mult    = wml.setting("crouch_speed_multiplier", 3.0),
   sprint_length  = wml.setting("sprint_length_multiplier", 2.0),
   sprint_recharge= wml.setting("sprint_recharge_multiplier", 0.5),
@@ -219,19 +218,6 @@ local function patch_weapons(xml)
   return xml, changed
 end
 
--- ------------------------------------------------------------------- melee
-
-local function patch_melee(xml)
-  -- Moves contain <MeleeMove> references to other moves, so they can't be
-  -- split into blocks; the tags are unique enough to change table-wide.
-  local table_end = xml:find("</Table>", 1, true) or #xml
-  local head, tail = xml:sub(1, table_end - 1), xml:sub(table_end)
-  -- Damage and impact here are shared by everyone who uses the move, so
-  -- the player's melee strength is raised through their rank instead
-  -- (spawn_info_ranks.xtbl, Melee_Damage_Modifier). Nothing to do here.
-  return head .. tail, 0
-end
-
 -- -------------------------------------------------------------- NPC health
 
 -- spawn_info_ranks.xtbl: hit points per rank. The Player is a rank here
@@ -305,7 +291,6 @@ end
 local FILES = {
   { "vehicles.xtbl",       patch_vehicles },
   { "weapons.xtbl",        patch_weapons },
-  { "melee.xtbl",          patch_melee },
   { "spawn_info_ranks.xtbl", patch_ranks },
   { "gameplay_constants.xtbl", patch_constants },
   { "camera_free.xtbl",    patch_camera },
