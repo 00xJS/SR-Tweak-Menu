@@ -29,8 +29,8 @@
 -- spot. "Tracking" keeps the camera in place but turns it to keep you in
 -- frame. The game aims and turns your moves by its camera, so during the
 -- update it sees an aim camera behind you instead, which the right stick /
--- mouse turns round you like a twin-stick game: it stays level at chest
--- height, so you only pick a direction, never a height. The shot is put
+-- mouse turns round you like a twin-stick game: it keeps one height and
+-- tilt, so you only pick a direction, never a height. The shot is put
 -- back after the update for the picture.
 
 local G = require("game")
@@ -44,7 +44,11 @@ local CAM, PUSH, POP = 0x827D9778, 0x8210A568, 0x8210A650
 local MODE_FREE = 5
 local KEYS = { "W", "A", "S", "D", "Q", "E", "SPACE", "SHIFT", "CTRL", "ALT", "Z", "X", "R", "F", "C", "V", "TAB", "ENTER" }
 local LEASH = 150   -- metres from the player: the world only streams around them
-local AIM_BACK, AIM_UP = 3.0, 1.2   -- the aim camera: metres behind you and above your feet (chest height)
+-- The aim camera: metres behind you, height above your feet, a slight
+-- downward tilt (level aim sent rounds over people's heads), and how much
+-- faster than the normal camera the right stick / mouse spins it.
+local AIM_BACK, AIM_UP, AIM_PITCH, AIM_TURN = 3.0, 1.0, -0.06, 2.0
+FC.AIM_UP, FC.AIM_PITCH, FC.AIM_TURN = AIM_UP, AIM_PITCH, AIM_TURN
 
 local read_u32, read_f32, write_f32 = wml.read_u32, wml.read_f32, wml.write_f32
 local function put(a, v) write_f32(a, v[1]); write_f32(a + 4, v[2]); write_f32(a + 8, v[3]) end
@@ -77,7 +81,7 @@ function FC.set_mode(m)
     pcall(wml.mouse_look)        -- no turn carried over from flying
     if m ~= FLY and FC.mode == FLY then
       -- Aim starts the way the shot looks (level), so forward is "into" it.
-      FC.aim_yaw, FC.aim_pitch = FC.yaw, 0
+      FC.aim_yaw, FC.aim_pitch = FC.yaw, AIM_PITCH
     end
     hold_keys(m == FLY)
   end
@@ -117,7 +121,7 @@ function FC.enter(ctx)
   FC.yaw, FC.pitch = math.atan(f[1], f[3]), math.asin(math.max(-1, math.min(1, f[2])))
   FC.fov = (FC.saved.fov > 5 and FC.saved.fov < 170) and FC.saved.fov or 70
   G.call(ctx, PUSH, { MODE_FREE })
-  FC.aim_yaw, FC.aim_pitch = FC.yaw, 0
+  FC.aim_yaw, FC.aim_pitch = FC.yaw, AIM_PITCH
   taken = false
   hold_keys(FC.mode == FLY)
   pcall(wml.mouse_look)          -- drop any turn that built up before
@@ -172,8 +176,8 @@ function FC.update(ctx, paused)
     -- The right stick / mouse turns the aim camera.
     local okl, dyaw, dpitch = pcall(wml.mouse_look)
     if okl and not paused then
-      FC.aim_yaw = (FC.aim_yaw or FC.yaw) + (dyaw or 0)   -- up/down is ignored: aim stays level
-      FC.aim_pitch = 0
+      FC.aim_yaw = (FC.aim_yaw or FC.yaw) + (dyaw or 0) * AIM_TURN   -- up/down is ignored
+      FC.aim_pitch = AIM_PITCH
     end
     local dx, dy, dz = px - FC.pos[1], py + 1.0 - FC.pos[2], pz - FC.pos[3]
     local dist = math.sqrt(dx * dx + dy * dy + dz * dz)

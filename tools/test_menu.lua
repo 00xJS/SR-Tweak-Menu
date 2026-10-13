@@ -172,6 +172,15 @@ assert(hooks[0x82209E30], "update hook missing")
 assert(hooks[0x82788EC4], "input hook missing")
 assert(hooks[0x824470D0], "damage hook missing")
 
+-- Everything starts off: toggles off, sliders at the game's own value.
+local F0 = require("features")
+for _, cat in ipairs(F0.categories) do
+  for _, it in ipairs(cat.items) do
+    if it.kind == "toggle" and it.id ~= "master" then assert(not it.v, it.id .. " should start off") end
+  end
+end
+assert(F0.items.health_mult.v == 1, "health multiplier should start at x1")
+
 local tick = 0
 local function update(n)
   for _ = 1, (n or 1) do
@@ -368,9 +377,9 @@ do
   -- A state pose.
   F.items.pose.v = 1
   local msg = F.activate(make_ctx(), F.items.pose)
-  assert(msg == "Pose: Dance 1" and read_u32(P + 952) == 159, msg)
+  assert(msg == "Pose: Dance 2" and read_u32(P + 952) == 160, msg)
   write_u32(P + 952, 42); update(1)                    -- the game reset it while still
-  assert(read_u32(P + 952) == 159, "pose not held")
+  assert(read_u32(P + 952) == 160, "pose not held")
   write_f32(P + 20, read_f32(P + 20) + 2); update(1)    -- moved: the pose ends
   assert(F.posing == nil, "moving should end the pose")
   write_f32(P + 20, read_f32(P + 20) - 2)
@@ -578,15 +587,19 @@ do
   keys_down["W"] = true; update(10); keys_down["W"] = nil
   assert(read_f32(CAM + 52) == held, "the held camera moved")
   -- During the update the game aims from a camera behind the player, turned by the mouse.
+  local yaw_before = F.FREECAM.aim_yaw
   wml.mouse_look = function() return 0.5, 0.3 end
   update(1)
+  assert(math.abs(F.FREECAM.aim_yaw - yaw_before - 0.5 * F.FREECAM.AIM_TURN) < 1e-6, "aim should spin faster than the mouse")
   wml.mouse_look = function() return 0, 0 end
   F.FREECAM.before_update()
   local fx, fz = read_f32(CAM + 104), read_f32(CAM + 112)
   assert(math.abs(fx - math.sin(F.FREECAM.aim_yaw) * math.cos(F.FREECAM.aim_pitch)) < 0.01 and fx > 0.3, "aim camera not turned by the mouse")
   local bx, bz = read_f32(CAM + 44), read_f32(CAM + 52)
   assert(math.abs((10 - bx) - fx * 3.0) < 0.05 and math.abs((20 - bz) - fz * 3.0) < 0.05, "aim camera not behind the player")
-  assert(F.FREECAM.aim_pitch == 0 and math.abs(read_f32(CAM + 108)) < 1e-6 and math.abs(read_f32(CAM + 48) - (5 + 1.2)) < 0.01, "aim should stay level at chest height")
+  local tilt = F.FREECAM.AIM_PITCH
+  assert(F.FREECAM.aim_pitch == tilt and math.abs(read_f32(CAM + 108) - math.sin(tilt)) < 1e-4, "aim should keep its slight downward tilt")
+  assert(math.abs(read_f32(CAM + 48) - (5 + F.FREECAM.AIM_UP - math.sin(tilt) * 3.0)) < 0.01, "aim camera height wrong")
   update(1)
   assert(read_f32(CAM + 52) == held, "the shot not put back after the update")
   -- Tracking turns towards the player (who is ahead along +z... put them to the side).
@@ -694,7 +707,9 @@ do
   local dealt; c.call_original = function(self) dealt = self.fregs[1] end
   hooks[0x824470D0](c)
   assert(dealt == 0, "god mode should zero the damage")
+  assert((read_u32(P + 216) & 0x00100000) ~= 0, "god mode should set the invulnerability bit")
   F.items.god.v = false; update(1)
+  assert((read_u32(P + 216) & 0x00100000) == 0, "god mode off should clear the invulnerability bit")
   local cheat_name, cheat_rounds
   FAKE[0x821F56C0] = function(ctx) cheat_name = read_cstr(read_u32(ctx.regs[3])); cheat_rounds = read_u32(ctx.regs[3] + 4) end
   for i, w in ipairs(F.items.give_weapon.items) do if w[2] == "Vice 9" then F.items.give_weapon.v = i end end
@@ -897,6 +912,83 @@ do
   assert(MENU.parse_combo("RB+NOPE") == nil, "unknown button accepted")
   h, p = MENU.parse_combo(""); assert(h == 0 and p == 0, "empty combo should mean none")
   print("controller: combo, tabs, hints and swallowed buttons OK")
+end
+
+-- Health multiplier: the maximum times the slider, the bar keeps its share,
+-- back to the game's own at x1; a maximum the game sets itself starts over.
+do
+  write_u32(P + 1908, 1000); write_f32(P + 1912, 500)
+  F.items.health_mult.v = 3; update(1)
+  assert(read_u32(P + 1908) == 3000 and math.abs(read_f32(P + 1912) - 1500) < 0.01, "x3 health: " .. read_u32(P + 1908))
+  F.items.health_mult.v = 2; update(1)
+  assert(read_u32(P + 1908) == 2000 and math.abs(read_f32(P + 1912) - 1000) < 0.01, "x2 health: " .. read_u32(P + 1908))
+  write_u32(P + 1908, 1200); update(1)                  -- a health upgrade from the game
+  assert(read_u32(P + 1908) == 2400, "new maximum not doubled: " .. read_u32(P + 1908))
+  F.items.health_mult.v = 1; update(1)
+  assert(read_u32(P + 1908) == 1200, "x1 should give the game's own maximum back: " .. read_u32(P + 1908))
+  write_u32(P + 1908, 0); write_f32(P + 1912, 0)
+end
+
+-- Rapid fire: every weapon's own refire delay halved (never below 40 ms or
+-- above the original), put back when off.
+do
+  F.items.fire.v = false; update(1)          -- an earlier test left rapid fire on
+  local old_base, old_n = read_u32(0x832ABCA8), read_u32(0x832ABCAC)
+  local W = 0x5C000000
+  write_u32(0x832ABCA8, W); write_u32(0x832ABCAC, 3)
+  write_u16(W + 122, 300); write_u16(W + 520 + 122, 60); write_u16(W + 1040 + 122, 0)
+  F.items.fire.v = true; update(1)
+  assert(read_u16(W + 122) == 150 and read_u16(W + 520 + 122) == 40 and read_u16(W + 1040 + 122) == 0, "refire not cut")
+  update(3)
+  assert(read_u16(W + 122) == 150, "cut more than once")
+  F.items.fire.v = false; update(1)
+  assert(read_u16(W + 122) == 300 and read_u16(W + 520 + 122) == 60, "refire not put back")
+  write_u32(0x832ABCA8, old_base); write_u32(0x832ABCAC, old_n)
+end
+
+-- Rapid fire quadruples shotguns (class 3); harder hits triple the
+-- killing-shot push (+304); both put back when off.
+do
+  local old_base, old_n = read_u32(0x832ABCA8), read_u32(0x832ABCAC)
+  local W = 0x5C100000
+  write_u32(0x832ABCA8, W); write_u32(0x832ABCAC, 2)
+  write_u32(W + 20, 3); write_u16(W + 122, 800); write_f32(W + 304, 2.0)
+  write_u32(W + 520 + 20, 0); write_u16(W + 520 + 122, 200); write_f32(W + 520 + 304, 0)
+  F.items.fire.v = true; F.items.harder_hits.v = true; update(2)
+  assert(read_u16(W + 122) == 200 and read_u16(W + 520 + 122) == 100, "shotgun x4 / gun x2")
+  assert(read_f32(W + 304) == 6.0 and read_f32(W + 520 + 304) == 0, "harder hits")
+  F.items.fire.v = false; F.items.harder_hits.v = false; update(1)
+  assert(read_u16(W + 122) == 800 and read_f32(W + 304) == 2.0, "weapons not put back")
+  write_u32(0x832ABCA8, old_base); write_u32(0x832ABCAC, old_n)
+end
+
+-- Soft landing raises the panic-fall speed, quick crouch the crouch camera;
+-- the game's values come back off.
+do
+  F.items.landing.v = false; F.items.quick_crouch.v = false; update(1)   -- an earlier test left soft landing on
+  write_f32(0x838F837C, 12); write_f32(0x827D9370, 3); write_f32(0x827D9374, 0.25)
+  F.items.landing.v = true; F.items.quick_crouch.v = true; update(2)
+  assert(read_f32(0x838F837C) == 100, "no flailing")
+  assert(read_f32(0x827D9370) == 9 and read_f32(0x827D9374) == 0.75, "quick crouch")
+  F.items.landing.v = false; F.items.quick_crouch.v = false; update(1)
+  assert(read_f32(0x838F837C) == 12 and read_f32(0x827D9370) == 3 and read_f32(0x827D9374) == 0.25, "not put back")
+end
+
+-- Extra car grip: 5 more downforce on the car you drive, its own back when
+-- you get out or switch it off.
+do
+  local ACT = 0x5D001000
+  put_in_vehicle(true)
+  write_u32(ENGINE + 216, ACT); write_f32(ACT + 28, -20)
+  F.items.car_grip.v = true; update(2)
+  assert(read_f32(ACT + 28) == -25, "grip not added: " .. read_f32(ACT + 28))
+  put_in_vehicle(false); update(1)
+  assert(read_f32(ACT + 28) == -20, "grip not put back on leaving: " .. read_f32(ACT + 28))
+  put_in_vehicle(true); update(1)
+  assert(read_f32(ACT + 28) == -25, "grip not added again")
+  F.items.car_grip.v = false; update(1)
+  assert(read_f32(ACT + 28) == -20, "grip not put back when off")
+  put_in_vehicle(false); update(1)
 end
 
 -- Help text: whole sentences, at most 90 characters a line and 3 lines;

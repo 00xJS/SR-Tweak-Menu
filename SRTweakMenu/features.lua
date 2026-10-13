@@ -126,7 +126,14 @@ local function enqueue(code) F.queue[#F.queue + 1] = code end
 -- ================================================================ Player
 category("Player", {
   { id = "god", label = "God mode", kind = "toggle", pbits = G.FLAG.INVULNERABLE,
-    help = "The game's own invulnerability flag (the trainer's God Mode)." },
+    help = "The game's own invulnerability flag (the trainer's God Mode).",
+    -- The update only manages the bit while god mode is on (the landing and
+    -- teleport shields use it too), so switching off clears it here.
+    off = function(ctx, p) if p and p ~= 0 then G.player_flag(p, G.FLAG.INVULNERABLE, false) end end },
+  { id = "health_mult", label = "Health multiplier", kind = "value", default = 1, min = 1, max = 10, step = 0.5, fmt = fmtx,
+    help = "Your maximum health times this: x2 double, x3 triple. Your health bar keeps its share.",
+    update = function(ctx, p, v, it) F.scale_health(p, it.v) end,
+    off = function(ctx, p) F.scale_health(p, 1) end },
   { id = "heal", label = "Refill health", kind = "action", help = "Sets your health to its maximum once.",
     run = function(ctx, p) write_f32(p + G.P.HEALTH, read_u32(p + G.P.HEALTH_MAX)); return "Health refilled" end },
   { id = "never_wanted", label = "Never wanted", kind = "toggle",
@@ -198,10 +205,19 @@ category("Player", {
     help = "Run and sprint faster, by the Run speed below. Can make running stutter." },
   { id = "run_speed", label = "Run speed", kind = "value", default = 1.0, min = 1, max = 6, step = 0.25, fmt = fmtx, oneshot = true,
     v = S("run_speed_multiplier", 1.5), help = "How much faster you run with Run boost on (x1 = the game's speed)." },
-  { id = "jump", label = "High jump", kind = "toggle", v = true, help = "Jump higher, by the Jump boost below." },
+  { id = "jump", label = "High jump", kind = "toggle", v = S("high_jump", false), help = "Jump higher, by the Jump boost below." },
   { id = "jump_boost", label = "Jump boost", kind = "value", default = 1.0, min = 1, max = 10, step = 0.5, fmt = fmtx, oneshot = true,
     v = S("jump_multiplier", 4.0), help = "How much higher you jump with High jump on (x1 = the game's jump)." },
-  { id = "landing", label = "Soft landing", kind = "toggle", v = true, help = "No fall damage, stumble or ragdoll from any height." },
+  { id = "landing", label = "Soft landing", kind = "toggle", v = S("soft_landing", false), needs = "none",
+    help = "No fall damage, stumble, ragdoll or flailing from any height.",
+    -- No flailing: the panic-fall speed raised for everyone while on.
+    update = function() F.hold_float(G.PANIC_FALL, 100) end,
+    off = function() F.release_float(G.PANIC_FALL) end },
+  { id = "quick_crouch", label = "Quick crouch", kind = "toggle", needs = "none", help = "You drop into a crouch almost at once.",
+    update = function()
+      F.hold_float(G.CROUCH_ACCEL, 9); F.hold_float(G.CROUCH_DAMPING, 0.75)
+    end,
+    off = function() F.release_float(G.CROUCH_ACCEL); F.release_float(G.CROUCH_DAMPING) end },
   { id = "jump_height", label = "Jump height (game)", kind = "value", needs = "none", default = 0.85, min = 0.2, max = 6, step = 0.1, fmt = fmt2, float = G.VAR.JUMP_HEIGHT,
     help = "The engine's own jump height constant. Combine with High jump or use alone." },
   { id = "swim_speed", label = "Swim speed", kind = "value", needs = "none", default = 4.5, min = 1, max = 40, step = 0.5, fmt = fmt1, float = G.VAR.SWIM_SPEED,
@@ -237,14 +253,13 @@ category("Player", {
 -- function in a script thread, as missions do (it waits for the move).
 -- An animation is a built-in state name (anim_states, the game's own list
 -- of 227) or { file = "name" }: an animation file from the people's
--- animation sets, played the way the game plays custom animations (the
--- brothel-scene ones live only as files: pfl1/pml1 = female/male sets).
+-- animation sets, played the way the game plays custom animations
+-- (pfl1/pml1 = female/male sets).
 local function file(name) return { file = name } end
 
 local POSES = {
-  { "dance a", "Dance 1" }, { "dance b", "Dance 2" }, { "dance c", "Dance 3" }, { "dance d", "Dance 4" },
-  { "pair dance a", "Partner dance" }, { "breakdancer stand", "Breakdance" }, { "pole stand", "Pole dance" },
-  { "stage stand", "Stage dance" }, { "react cheer", "Cheer" }, { "surrender", "Hands up" },
+  { "dance b", "Dance 2" }, { "dance c", "Dance 3" }, { "dance d", "Dance 4" },
+  { "react cheer", "Cheer" }, { "surrender", "Hands up" },
   { "blunt smoking", "Smoke a blunt" }, { "forty drinking", "Drink a forty" }, { "Beer Stand", "Beer" },
   { "magazine stand", "Read a magazine" }, { file("PML1_BS_RdPpr"), "Read the paper" }, { "cell stand", "On the phone" },
   { "Lounge", "Lounge" }, { "Lean", "Lean" }, { "car lean", "Lean on a car" }, { "sitting", "Sit" },
@@ -268,9 +283,6 @@ local ACTIONS = {
 }
 
 -- Scenes: women spawned doing the game's animations.
--- (The game's brothel-scene animations, sex/bj/head give and get, are only
--- placeholders of about 1.3 KB in preload.vpp: cut before release, so they
--- are not offered.)
 local F_MODELS = { "Stripper-Black", "Stripper-Latina", "Stripper-White", "Stripper-Asian", "PD_W_F_HO-01",
   "PD_X_F_SkinnyHo", "PD_X_F_HO-03", "pd_x_f_genericyoung-01", "PD_X_F_GenericYoung-02", "PD_X_F_GenericYoung-03" }
 -- A scene: pairs { first, second, "mf"/"ff"/"fm" sexes } and singles { animation, "f"/"m" }.
@@ -348,7 +360,14 @@ category("Weapons", {
       if read_u32(ammo + 16) < mag then write_u32(ammo + 16, mag) end
       if read_u32(ammo + 20) < 1 then write_u32(ammo + 20, 1) end
     end },
-  { id = "fire", label = "Auto fire", kind = "toggle", v = true, help = "Single-shot guns keep firing while the trigger is held." },
+  { id = "fire", label = "Rapid fire", kind = "toggle", needs = "none", v = S("auto_fire", false),
+    help = "Your guns fire twice as fast, shotguns four times. Single-shot guns keep firing while you hold the trigger.",
+    update = function() F.faster_guns(true) end,
+    off = function() F.faster_guns(false) end },
+  { id = "harder_hits", label = "Harder hits", kind = "toggle", needs = "none",
+    help = "People you kill with a gun fly three times further.",
+    update = function() F.harder_hits(true) end,
+    off = function() F.harder_hits(false) end },
   { id = "one_hit", label = "One-hit kill", kind = "toggle", help = "Any hit from you kills a person outright. Experimental." },
   { id = "rocket_ammo", label = "Rocket ammo", kind = "toggle",
     help = "Your guns fire real RPG rockets at their own fire rate (one per shot). Careful up close: the blast hurts you too.",
@@ -390,7 +409,7 @@ category("Vehicles", {
     end },
   { id = "veh_repair", label = "Repair now", kind = "action", needs = "vehicle", help = "Fixes every dent, tyre and smoke on the car you are in.",
     run = function(ctx, p, v) G.call(ctx, G.VEHICLE_REPAIR, { v }, 1.0); return "Repaired" end },
-  { id = "tank", label = "Tank mode", kind = "toggle", needs = "vehicle", vbits_b = G.VFLAG_B.INFINITE_MASS, v = S("vehicle_tank", true),
+  { id = "tank", label = "Tank mode", kind = "toggle", needs = "vehicle", vbits_b = G.VFLAG_B.INFINITE_MASS, v = S("vehicle_tank", false),
     help = "Your car is immovable in collisions; others bounce off." },
   { id = "bulletproof", label = "Bulletproof glass", kind = "toggle", needs = "vehicle", vbits_b = G.VFLAG_B.BULLETPROOF_GLASS,
     help = "Bullets no longer come through the windows of your car." },
@@ -398,7 +417,11 @@ category("Vehicles", {
     help = "Your tyres cannot be shot out." },
   { id = "no_fling", label = "No explosion fling", kind = "toggle", needs = "vehicle", vbits_a = G.VFLAG_A.NO_EXPLOSION_FLING,
     help = "Explosions no longer throw your car around." },
-  { id = "nitro_all", label = "Nitrous in every car", kind = "toggle", needs = "none", v = S("vehicle_nitrous_everywhere", true),
+  { id = "car_grip", label = "Extra car grip", kind = "toggle", needs = "none",
+    help = "More downforce on the car you drive, so it stays on the road at speed.",
+    update = function(ctx, p, v) if p ~= 0 then F.car_grip(v) end end,
+    off = function() F.car_grip(nil) end },
+  { id = "nitro_all", label = "Nitrous in every car", kind = "toggle", needs = "none", v = S("vehicle_nitrous_everywhere", false),
     help = "Every car has nitrous (Shift). Off: only the cars that had it in the game (the derby cars and one semi).",
     update = function() end,
     off = function() end },
@@ -1016,6 +1039,106 @@ local function weapon_info(name)
   end
 end
 
+-- Rapid fire: every weapon record's Refire_Delay (+122, ms; the player's
+-- own, enemies use +124/+126) cut while on, the game's values put back off.
+local fast_saved = nil
+function F.faster_guns(on)
+  if on and not fast_saved then
+    local base, n = read_u32(G.WEAPON_INFOS), read_u32(G.WEAPON_COUNT)
+    if not G.pointer_ok(base) or n == 0 or n > 200 then return end
+    fast_saved = {}
+    for i = 0, n - 1 do
+      local info = base + i * 520
+      local delay = read_u16(info + G.W.REFIRE)
+      if delay > 0 then
+        fast_saved[info] = delay
+        local mult = read_u32(info + G.W.CLASS) == G.W.SHOTGUN and 4 or 2
+        write_u16(info + G.W.REFIRE, math.min(delay, math.max(40, math.floor(delay / mult + 0.5))))
+      end
+    end
+  elseif not on and fast_saved then
+    for info, delay in pairs(fast_saved) do write_u16(info + G.W.REFIRE, delay) end
+    fast_saved = nil
+  end
+end
+
+-- Harder hits: every weapon's Ragdoll_Force_Shoot (+304) times three while
+-- on, put back off. The game uses it for the shot that kills.
+local force_saved = nil
+function F.harder_hits(on)
+  if on and not force_saved then
+    local base, n = read_u32(G.WEAPON_INFOS), read_u32(G.WEAPON_COUNT)
+    if not G.pointer_ok(base) or n == 0 or n > 200 then return end
+    force_saved = {}
+    for i = 0, n - 1 do
+      local info = base + i * 520
+      local force = read_f32(info + G.W.FORCE)
+      if force > 0 and force < 100000 then
+        force_saved[info] = force
+        write_f32(info + G.W.FORCE, force * 3)
+      end
+    end
+  elseif not on and force_saved then
+    for info, force in pairs(force_saved) do write_f32(info + G.W.FORCE, force) end
+    force_saved = nil
+  end
+end
+
+-- A global float set while a toggle is on, the game's value put back off.
+local held = {}
+function F.hold_float(addr, value)
+  if held[addr] == nil then held[addr] = read_f32(addr) end
+  if read_f32(addr) ~= value then write_f32(addr, value) end
+end
+function F.release_float(addr)
+  if held[addr] ~= nil then write_f32(addr, held[addr]); held[addr] = nil end
+end
+
+-- Extra car grip: the car you drive gets 5 m/s^2 more downforce (the game
+-- uses 20 on most cars); the car you leave gets its own back.
+local grip = nil
+local function downforce_addr(v)
+  local e = G.engine_object(v)
+  local action = e and read_u32(e + G.ENGINE_ACTION)
+  if not action or not G.pointer_ok(action) then return nil end
+  return action + G.ACTION_DOWNFORCE
+end
+function F.car_grip(v)
+  if grip and (grip.v ~= v or not G.vehicle_alive(grip.v, grip.handle)) then
+    if G.vehicle_alive(grip.v, grip.handle) then
+      local addr = downforce_addr(grip.v)
+      if addr and addr == grip.addr then write_f32(addr, grip.own) end
+    end
+    grip = nil
+  end
+  if not v or v == 0 then return end
+  local addr = downforce_addr(v)
+  if not addr then return end
+  if not grip or grip.addr ~= addr then
+    local own = read_f32(addr)
+    if own > 0 or own < -1000 then return end
+    grip = { v = v, handle = read_u32(v + 68), addr = addr, own = own }
+  end
+  if read_f32(addr) ~= grip.own - 5 then write_f32(addr, grip.own - 5) end
+end
+
+-- Health multiplier: the player's maximum health (+1908) times the
+-- multiplier, the bar keeping its share. The game's own maximum is what it
+-- last set (a new player after dying or a health upgrade starts over).
+local health = nil
+function F.scale_health(p, mult)
+  if not p or p == 0 then return end
+  local max = read_u32(p + G.P.HEALTH_MAX)
+  if max <= 0 or max > 10000000 then return end
+  if not health or health.p ~= p or max ~= health.set then health = { p = p, base = max, set = max } end
+  local want = math.max(1, math.floor(health.base * mult + 0.5))
+  if want == max then return end
+  local share = math.max(0, math.min(1, read_f32(p + G.P.HEALTH) / max))
+  write_u32(p + G.P.HEALTH_MAX, want)
+  write_f32(p + G.P.HEALTH, share * want)
+  health.set = want
+end
+
 -- The weapon record of the gun in the player's hands (pistol, SMG, rifle or
 -- shotgun firing bullets), or nil.
 function F.gun_info(p)
@@ -1125,7 +1248,7 @@ end
 local NITRO_ORIGINAL = { sp_derbycar01 = true, sp_derbycar02 = true, truck_2dr_semi02 = true }
 local nitro_cache = {}
 function F.limit_nitro(p)
-  if F.on("nitro_all") or not F.enabled then return end
+  if F.on("nitro_all") then return end
   local v = G.vehicle_object(p)
   if not v then return end
   local e = G.engine_object(v)
@@ -1346,7 +1469,7 @@ end
 -- way set_animation_state does it; a file is played the way the engine
 -- plays custom animations (stop what plays, look the file up, play it,
 -- mark the person as in a custom animation). The file has to be loaded:
--- the brothel animations come with the people whose sets hold them.
+-- it comes with the people whose animation sets hold it.
 local file_ids = {}
 local function anim_file_id(ctx, name)
   local id = file_ids[name]

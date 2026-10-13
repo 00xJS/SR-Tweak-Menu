@@ -25,29 +25,9 @@ local TELEPORT = 0x8243E6F8  -- (player, position*, 0, nav node or -1)
 local walk_speed = wml.setting("walk_speed", 2.5)   -- m/s; slower than this is left alone
 local max_step   = wml.setting("max_step", 1.0)     -- m per update; bigger moves are teleports/cutscenes
 local debug      = wml.setting("debug", false)
-local toggle_key = tostring(wml.setting("toggle_key", "B"))
-local KEYS = {
-  run     = tostring(wml.setting("key_run", "1")),
-  jump    = tostring(wml.setting("key_jump", "2")),
-  landing = tostring(wml.setting("key_landing", "3")),
-  tank    = tostring(wml.setting("key_tank", "4")),
-  fire    = tostring(wml.setting("key_fire", "6")),
-  status  = tostring(wml.setting("key_status", "0")),
-  notoriety = tostring(wml.setting("key_notoriety", "7")),
-}
-local noto_level = math.max(0, math.min(5, math.floor(tonumber(wml.setting("notoriety_level", 5)) or 5)))
-local noto_gangs = {}
-do
-  local names = { police = 4, los_carnales = 0, vice_kings = 1, rollers = 2, rollerz = 2 }
-  for name in tostring(wml.setting("notoriety_teams", "police, los_carnales, vice_kings, rollers")):gmatch("[^,%s]+") do
-    if names[name] then noto_gangs[#noto_gangs + 1] = names[name] end
-  end
-end
 G.hud_seconds = wml.setting("hud_seconds", 3)
 G.debug, F.debug = debug, debug
-local soft_landing = wml.setting("soft_landing", true)
 local max_fall     = wml.setting("max_fall_speed", 9)
-local auto_fire  = wml.setting("auto_fire", true)
 local fire_rate  = wml.setting("auto_fire_rate", 12)
 
 local read_u8, read_u16, read_u32, read_f32 = wml.read_u8, wml.read_u16, wml.read_u32, wml.read_f32
@@ -66,32 +46,6 @@ local function nudge(ctx, p, dx, dy, dz)
   local node = read_u32(p + G.P.NAV_NODE)
   if tick % 30 == 0 or node == 0xFFFFFFFF then node = 0xFFFFFFFF end
   G.call(ctx, TELEPORT, { p, buf, 0, node })
-end
-
--- ------------------------------------------------------------- hotkeys
---
--- The old single-key shortcuts still work beside the menu.
-local function handle_keys(ctx)
-  if MENU.is_open() then return end
-  if toggle_key ~= "" and wml.key_pressed(toggle_key) then
-    F.items.master.v = not F.items.master.v
-    F.enabled = F.items.master.v
-    G.hud(F.enabled and "SR Tweak Menu on" or "SR Tweak Menu off")
-  end
-  for k, key in pairs(KEYS) do
-    if key ~= "" and wml.key_pressed(key) then
-      if k == "status" then
-        G.hud(F.status_line())
-      elseif k == "notoriety" then
-        local p = G.player()
-        if p ~= 0 then G.hud(F.set_notoriety_all(ctx, p, noto_level, noto_gangs)) else G.hud("Notoriety: not in single player") end
-      else
-        local it = F.items[k]
-        it.v = not it.v
-        G.hud(it.label .. (it.v and " on" or " off"))
-      end
-    end
-  end
 end
 
 -- ---------------------------------------------------------------- jumps
@@ -188,7 +142,6 @@ wml.hook(G.INPUT_GET_STATE, function(ctx)
     if (hide & MENU.PAD.LT) ~= 0 then write_u8(state + 6, 0) end
     if (hide & MENU.PAD.RT) ~= 0 then write_u8(state + 7, 0) end
   end
-  if not auto_fire then return end
   local rt = read_u8(state + 7)
   if rt == 0 or not F.on("fire") then return end
   local p = G.player()
@@ -208,7 +161,20 @@ wml.hook(G.IGNITE, function(ctx)
   ctx:call_original()
 end)
 
+-- Debug: every hit on you is logged with what the game checks before it
+-- lets damage through (at most twice a second).
+local damage_logged = 0
+local function log_damage(p, asked, before)
+  if os.clock() - damage_logged < 0.5 then return end
+  damage_logged = os.clock()
+  wml.log(string.format("damage to you: %.1f, health %.0f -> %.0f of %d; flags %08X, +3592 %02X, +2988 %08X, +2996 %08X, state %08X, mp %d/%d",
+    asked, before, read_f32(p + G.P.HEALTH), read_u32(p + G.P.HEALTH_MAX), read_u32(p + G.P.FLAGS), read_u8(p + 3592),
+    read_u32(p + 2988), read_u32(p + 2996), read_u32(0x827D5798 + 2072), read_u8(0x8370E9F6), read_u8(0x8370E9DF)))
+end
+
 wml.hook(G.TAKE_DAMAGE, function(ctx)
+  local p0 = read_u32(G.PLAYER)
+  local before = debug and p0 ~= 0 and (ctx:r(3) & 0xFFFFFFFF) == p0 and read_f32(p0 + G.P.HEALTH)
   if F.on("god") and (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then
     ctx:set_f(1, 0.0)                           -- no damage to you at all
   end
@@ -220,7 +186,9 @@ wml.hook(G.TAKE_DAMAGE, function(ctx)
       ctx:set_f(1, -1.0)
     end
   end
+  local asked = ctx:f(1)
   ctx:call_original()
+  if before then log_damage(p0, asked, before) end
 end)
 
 -- --------------------------------------------------------- vehicle god mode
@@ -265,7 +233,6 @@ wml.hook(G.UPDATE, function(ctx)
   ctx:call_original()
   tick = tick + 1
   last_update = os.clock()
-  handle_keys(ctx)
   MENU.input(ctx, tick)
   F.set_menu_open(MENU.is_open())
   F.update(ctx)
@@ -302,8 +269,8 @@ wml.hook(G.UPDATE, function(ctx)
   if now ~= seconds then
     if updates > 10 then last_rate = updates end
     if debug and (peak_speed > 0.1 or peak_rise > 0.01) then
-      wml.log(string.format("on foot: %d updates/s, fastest %.2f m/s, highest rise %.3f m/update, state %d, flags %08X, jumps %d, weapon %s",
-        updates, peak_speed, peak_rise, read_u32(p + G.P.STATE), read_u32(p + G.P.FLAGS), jumps,
+      wml.log(string.format("on foot: %d updates/s, fastest %.2f m/s, highest rise %.3f m/update, state %d, flags %08X, health %.0f of %d, jumps %d, weapon %s",
+        updates, peak_speed, peak_rise, read_u32(p + G.P.STATE), read_u32(p + G.P.FLAGS), read_f32(p + G.P.HEALTH), read_u32(p + G.P.HEALTH_MAX), jumps,
         equipped_weapon(p) ~= "" and equipped_weapon(p) or "none"))
     end
     seconds, updates, peak_speed, peak_rise = now, 0, 0, 0
@@ -320,7 +287,7 @@ wml.hook(G.UPDATE, function(ctx)
   -- Soft landing: the game measures a fall from the position saved at +404.
   -- Keeping it at the current position means every landing counts as a
   -- drop of nothing: no stumble, no ragdoll, no fall damage.
-  local landing_on = soft_landing and enabled and F.items.landing.v
+  local landing_on = enabled and F.items.landing.v
   if landing_on then
     write_f32(p + G.P.FALL_START, x); write_f32(p + G.P.FALL_START + 4, y); write_f32(p + G.P.FALL_START + 8, z)
   end
@@ -373,5 +340,5 @@ wml.hook(G.UPDATE, function(ctx)
   end
 end)
 
-wml.log(string.format("SR Tweak Menu: run x%.2f, jump x%.2f, auto fire %s; menu key %s (debug=%s)", F.items.run_speed.v, F.items.jump_boost.v,
-  auto_fire and (fire_rate .. "/s") or "off", tostring(wml.setting("menu_key", "F5")), tostring(debug)))
+wml.log(string.format("SR Tweak Menu: run x%.2f, jump x%.2f, rapid fire %s; menu key %s (debug=%s)", F.items.run_speed.v, F.items.jump_boost.v,
+  F.items.fire.v and (fire_rate .. "/s") or "off", tostring(wml.setting("menu_key", "F5")), tostring(debug)))

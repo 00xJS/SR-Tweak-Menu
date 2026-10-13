@@ -108,6 +108,18 @@ G.SET_COLOUR     = 0x8254CA48  -- (state, part, colour slot, colour record)
 -- explosion at +144. A rocket keeps its weapon pointer at +208 while it flies.
 G.FIRE           = 0x82470A50  -- (human, target, r5, bool): fires the equipped gun
 G.WEAPON_INFOS, G.WEAPON_COUNT = 0x832ABCA8, 0x832ABCAC   -- *: 520 bytes each
+-- Weapon record fields read at every shot: +20 class (3 = shotgun), +122 u16
+-- Refire_Delay (ms), +304 f32 Ragdoll_Force_Shoot (the push of a killing shot).
+G.W = { CLASS = 20, REFIRE = 122, FORCE = 304, SHOTGUN = 3 }
+-- Live tunables. Panic fall: falling faster than this (m/s) flails
+-- (gameplay_constants, read per character every frame). Crouch: the follow
+-- camera's crouch rate cap and damping (camera_free, read every frame).
+G.PANIC_FALL = 0x838F837C
+G.CROUCH_ACCEL, G.CROUCH_DAMPING = 0x827D9370, 0x827D9374
+-- Downforce: a car's Extra_Gravity is copied into the action object at
+-- engine object (G.engine_object) +216, float +28 (m/s^2, negative pulls
+-- down); read every physics step.
+G.ENGINE_ACTION, G.ACTION_DOWNFORCE = 216, 28
 G.PROJECTILES    = 0x8309A494  -- *: ring of live projectiles, next at +204
 G.IGNITE         = 0x8245E3A0  -- (victim, 0, attacker, 0, f1 = seconds) -> 1 if they caught fire
 G.BURN_TIME      = 0x838F83E4  -- float: the game's burn time (set at level load)
