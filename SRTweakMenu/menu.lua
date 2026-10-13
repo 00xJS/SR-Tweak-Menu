@@ -24,7 +24,7 @@ local G = require("game")
 local F = require("features")
 local S = wml.setting
 
-local M = { open = false, tab = 1, cursor = {}, scroll = {}, status = "", status_until = 0, dll = false, pad = 0, page = nil }
+local M = { open = false, tab = 1, cursor = {}, scroll = {}, status = "", status_until = 0, dll = false, pad = 0 }
 
 local MAILBOX, MAGIC = 0x00F00000, 0x53524D55
 local TEXT_OFFSET, TEXT_MAX = 0x40, 8192
@@ -100,19 +100,6 @@ local function current_item()
   return cat.items[M.cursor[M.tab]], cat
 end
 
--- A list item's own page: every entry on its own row, Enter picks one.
-local function open_page(it)
-  M.page = { item = it, cursor = it.v, scroll = math.max(1, it.v - ROWS // 2) }
-end
-local function page_move(dir)
-  local pg = M.page
-  local n = #pg.item.items
-  pg.cursor = ((pg.cursor - 1 + dir) % n) + 1
-  if pg.cursor < pg.scroll then pg.scroll = pg.cursor end
-  if pg.cursor >= pg.scroll + ROWS then pg.scroll = pg.cursor - ROWS + 1 end
-  if not M.dll then say(pg.item.items[pg.cursor][2]) end
-end
-
 -- ------------------------------------------------------------- mailbox
 local seq, last_text = 0, nil
 local function mailbox_write(text)
@@ -146,9 +133,9 @@ local function set_open(open)
   tap_armed = 0
   if open then
     check_dll()
+    M.refresh_now = true
     say(M.dll and "" or "Menu open (no overlay): " .. current_item().label)
   else
-    M.page = nil
     last_text = nil
     if M.dll then mailbox_write("") end
   end
@@ -175,7 +162,6 @@ local function switch_tab(dir)
 end
 
 local function adjust(ctx, dir)
-  if M.page then page_move(dir * ROWS) return end
   local it = current_item()
   if it.kind == "value" or it.kind == "choice" or it.kind == "list" then
     say(F.adjust(ctx, it, dir, wml.key_down(KEY.fast)))
@@ -185,15 +171,8 @@ local function adjust(ctx, dir)
 end
 
 local function activate(ctx)
-  if M.page then
-    local it = M.page.item
-    it.v = M.page.cursor
-    say(F.activate(ctx, it))
-    return
-  end
-  local it = current_item()
-  if it.kind == "list" then open_page(it) return end
-  say(F.activate(ctx, it))
+  -- Lists act on the entry shown on the row (picked with Left/Right).
+  say(F.activate(ctx, current_item()))
 end
 
 -- ------------------------------------------------------------- input
@@ -245,6 +224,8 @@ end
 
 function M.input(ctx, tick)
   M.tick = tick
+  -- What your character can do right now, for the Pose and Action counts.
+  if M.open and (M.refresh_now or tick % 50 == 1) then M.refresh_now = false; pcall(F.refresh_usable, ctx) end
   if tick % 100 == 0 then check_dll() end
   track_taps()
   track_device()
@@ -255,13 +236,7 @@ function M.input(ctx, tick)
   end
   if M.open then
     if wml.key_pressed(KEY.back) or pad_hit(PAD.B) then
-      if M.page then M.page = nil else set_open(false) end
-    elseif M.page then
-      if repeating("up", wml.key_down(KEY.up) or pad_down(PAD.UP)) then page_move(-1) end
-      if repeating("down", wml.key_down(KEY.down) or pad_down(PAD.DOWN)) then page_move(1) end
-      if repeating("left", wml.key_down(KEY.left) or pad_down(PAD.LEFT)) then adjust(ctx, -1) end
-      if repeating("right", wml.key_down(KEY.right) or pad_down(PAD.RIGHT)) then adjust(ctx, 1) end
-      if wml.key_pressed(KEY.enter) or pad_hit(PAD.A) then activate(ctx) end
+      set_open(false)
     else
       if repeating("up", wml.key_down(KEY.up) or pad_down(PAD.UP)) then move(-1) end
       if repeating("down", wml.key_down(KEY.down) or pad_down(PAD.DOWN)) then move(1) end
@@ -298,6 +273,35 @@ local function pad_right(s, n)
   return s .. string.rep(" ", n - #s)
 end
 
+-- Help text goes under the rows a whole sentence at a time, up to
+-- HELP_WIDTH characters a line; a sentence longer than that breaks at a
+-- space.
+local HELP_WIDTH = 90
+local function wrap_help(text)
+  local out, line = {}, ""
+  local function flush() if line ~= "" then out[#out + 1] = line; line = "" end end
+  for sentence in (text:gsub("([%.!?])%s+", "%1\n") .. "\n"):gmatch("(.-)\n") do
+    if sentence ~= "" then
+      if #sentence > HELP_WIDTH then
+        flush()
+        for word in sentence:gmatch("%S+") do
+          if line ~= "" and #line + 1 + #word > HELP_WIDTH then flush() end
+          line = line == "" and word or (line .. " " .. word)
+        end
+        flush()
+      elseif line ~= "" and #line + 1 + #sentence > HELP_WIDTH then
+        flush()
+        line = sentence
+      else
+        line = line == "" and sentence or (line .. " " .. sentence)
+      end
+    end
+  end
+  flush()
+  return out
+end
+M.wrap_help = wrap_help
+
 function M.render(tick)
   if not M.dll then return end
   if not M.open then return end
@@ -307,27 +311,6 @@ function M.render(tick)
     tabs[#tabs + 1] = (i == M.tab) and ("[ " .. cat.name .. " ]") or ("  " .. cat.name .. "  ")
   end
   lines[#lines + 1] = "SR TWEAK MENU" .. (F.enabled and "" or "   (all tweaks OFF)")
-  if M.page then
-    local pg = M.page
-    local list = pg.item.items
-    lines[#lines + 1] = pg.item.label .. "   (" .. pg.cursor .. " of " .. #list .. ")"
-    lines[#lines + 1] = ""
-    local s = pg.scroll
-    local e = math.min(#list, s + ROWS - 1)
-    if s > 1 then lines[#lines + 1] = "    ..." end
-    for i = s, e do
-      local entry = list[i]
-      local extra = entry[3] and ("   " .. entry[3]) or ""
-      lines[#lines + 1] = ((i == pg.cursor) and "> " or "  ") .. pad_right(entry[2], 28) .. extra
-    end
-    if e < #list then lines[#lines + 1] = "    ..." end
-    lines[#lines + 1] = ""
-    lines[#lines + 1] = device == "pad" and "D-pad move   Left/Right page   A pick   B back"
-      or "Up/Down move   Left/Right page   Enter pick   Backspace back"
-    if M.status ~= "" and tick < M.status_until then lines[#lines + 1] = M.status end
-    mailbox_write(table.concat(lines, "\n"))
-    return
-  end
   lines[#lines + 1] = table.concat(tabs, " ")
   lines[#lines + 1] = ""
   local cat = F.categories[M.tab]
@@ -339,7 +322,9 @@ function M.render(tick)
     local cursor = (i == M.cursor[M.tab]) and "> " or "  "
     local value = F.value_text(it)
     if it.kind == "action" then value = "" end
-    if it.kind == "list" then value = "> " .. it.items[it.v][2] end
+    if it.kind == "list" then
+      value = (it.ok and #it.ok == 0) and "< none available >" or (F.value_text(it) .. "   " .. F.list_position(it))
+    end
     lines[#lines + 1] = cursor .. pad_right(it.label, 32) .. value
   end
   if e < #cat.items then lines[#lines + 1] = "    ..." end
@@ -347,7 +332,7 @@ function M.render(tick)
   local it = current_item()
   local help = it.help or ""
   if it.kind == "value" then help = help .. (help ~= "" and "  " or "") .. "Default " .. it.fmt(it.default) .. "." end
-  if help ~= "" then lines[#lines + 1] = help end
+  for _, l in ipairs(wrap_help(help)) do lines[#lines + 1] = l end
   if device == "pad" then
     lines[#lines + 1] = "D-pad move   Left/Right adjust   A select   LB/RB tab   B close" .. (combo_text ~= "" and ("   " .. combo_text .. " close") or "")
   else

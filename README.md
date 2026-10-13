@@ -1,11 +1,15 @@
 # SR Tweak Menu
 
-A mod for [Saints Reborn](https://github.com/whompay/SaintsReborn) (Saints
-Row, Xbox 360, recompiled for PC and Mac) with an in-game menu: god mode,
-wanted level, infinite ammo and no reload, every weapon, vehicle god mode,
-nitrous in every car, any of the game's 84 vehicles spawned in front of you,
-crowds of people, 21 teleport spots, weather, time, visual filters and more,
-on top of handling, weapon and on-foot tweaks. Every number is a setting.
+A mod for Saints Reborn ([Windows](https://github.com/whompay/SaintsReborn) /
+[Mac](https://github.com/00xJS/SaintsReborn-Mac)), the Windows and Mac
+version of the original Saints Row, with an in-game menu: god mode,
+wanted level, infinite ammo and no reload, rocket and fire ammo, every
+weapon, vehicle god mode, nitrous in every car, car paint, any of the game's
+79 vehicles or 188 people spawned in front of you, bodyguards and up to ten
+homies, everybody dance, poses and staged scenes, a free camera that can
+also hold a shot while you play, teleports to every crib and to your map
+waypoint, weather, time, visual filters and more, on top of handling, weapon
+and on-foot tweaks. Every number is a setting.
 
 Formerly Saints Tweaks.
 
@@ -15,10 +19,14 @@ Silver. Contains no game files.
 ## Install
 
 1. Download this repository (Code > Download ZIP) and unzip it.
-2. Copy the `SRTweakMenu` folder into `dist\mods` of your Saints Reborn
-   install (on Mac, `~/SaintsReborn/dist/mods`).
-3. Run Whompay's Mod Loader, tick **SR Tweak Menu**, press Play.
+2. Copy the `SRTweakMenu` folder into your mods folder:
+   - **Windows** ([Saints Reborn](https://github.com/whompay/SaintsReborn)): `dist\mods\` inside your Saints Reborn folder
+   - **Mac** ([Saints Reborn for Mac](https://github.com/00xJS/SaintsReborn-Mac)): `~/SaintsReborn/dist/mods/`
+3. Start Whompay's Mod Loader, tick **SR Tweak Menu**, press **Play**.
 4. In the game press **F5**.
+
+**Windows and Mac.** The Mac version runs the same Windows build under Wine,
+so the whole mod works on both, menu overlay and keyboard included.
 
 Like every gameplay mod it is private play only: story co-op and private
 parties, not public matches.
@@ -36,17 +44,20 @@ Every controller (Xbox, PlayStation, Switch and others) reaches the game as
 an Xbox pad, so the buttons are named the Xbox way. The combo is
 `menu_pad` in `mod.ini` (for example `LB+RB+DOWN`, or PlayStation names such
 as `R1+DOWN`). While RB is held, D-pad down is kept from the game, so the
-combo never cancels an activity. While the menu is open the game gets no
-input, so you stand still. Keys and rows per page are in `mod.ini`.
+combo never cancels an activity. **RB + D-pad up** (Shift + Up) ends a pose
+or a repeating action at any time (`stop_pad`). While the menu is open the
+game gets no input, so you stand still. Keys and rows per page are in
+`mod.ini`.
 
 | Tab | What is there |
 |---|---|
-| Player | God mode, refill health, never wanted, police and gang notoriety levels, max notoriety, no cops, no gangs, never busted, no ragdoll, perfect aim, run boost and run speed, high jump and jump boost, soft landing, the game's own jump height, swim speed, fall damage, infinite sprint, money, max respect |
-| Weapons | Infinite ammo, no reload, auto fire, one-hit kill, give a weapon, give every weapon, refill all ammo |
-| Vehicles | Vehicle god mode, repair, tank mode, bulletproof glass, never flat tyres, no explosion fling, nitrous strength, extra top speed, blow up my car, spawn any of the game's 84 vehicles in front of you (hidden ones too) or deliver it to your garage, remove what you spawned |
-| World | Weather, time of day, freeze the clock, clear traffic and peds, everybody drop (every ped ragdolls), spawn a crowd of random people, remove them again |
-| Visual | Hide HUD, saturation, letterbox, wireframe world |
-| Teleport | 21 places from the game's own level data: the four cribs, every district, the hospital, the police station, the airport, the docks and more. Your car and homies come along |
+| Player | God mode, refill health, homie limit 1 to 10 and dismiss all homies (from the More Homies mod), spawn a bodyguard (12 to pick from, armed, following and fighting as a homie) or a squad of four Saints, never wanted, police and gang notoriety levels, max notoriety, no cops, no gangs, never busted, no ragdoll, perfect aim, run boost and run speed, high jump and jump boost, soft landing, the game's own jump height, swim speed, fall damage, infinite sprint, money (+$50,000 a press), respect (+5,000 a press) |
+| Emotes | Pose: strike one of 34 poses the game's characters use (dances, breakdance, pole and stage dance, smoking, drinking, reading the paper, preaching, zombie eat ...) and hold it until you move. Stage a scene: dance pairs, a strip club or a house party, all women, spawned in front of you, everyone holding their part; Clear scene removes them. RB + D-pad Up (Shift + Up) stops a pose or a repeating action. Action: one of 28 one-off moves (flip off, wave, taunts, gang signs, pimp slap, pop and lock ...), once or on repeat for recording. The game's brothel animations are only placeholders in its files (cut before release), so they are not offered |
+| Weapons | Infinite ammo, no reload, auto fire, one-hit kill, rocket ammo (any gun fires real RPG rockets, up to ten a second and sixteen in the air; faster shots stay bullets), fire ammo (people you shoot catch fire), give a weapon, give every weapon, refill all ammo |
+| Vehicles | Vehicle god mode, repair, tank mode, bulletproof glass, never flat tyres, no explosion fling, nitrous in every car (on/off), extra top speed, paint my car and a second colour (36 paints, the gang colours among them; stays when you garage it), blow up my car, spawn any of the game's vehicles in front of you, alphabetical (hidden ones too) or deliver it to your garage, remove what you spawned |
+| World | Weather, time of day, freeze the clock, clear traffic and peds, restore traffic and peds, everybody drop (every ped ragdolls), Everybody... (the people around you dance, breakdance, cower, act drunk and more; each person only does what their own animations allow, so cops and some gang members sit some out), spawn any of the game's 188 people in an arc in front of you (alphabetical, by group; they come as civilians, so gang members don't start a fight, and they stay until you remove them; up to 8 kinds of person at once, as the game only has room for 12 person models and the city needs some, so a ninth kind replaces the oldest), spawn a crowd of random people, remove them again |
+| Visual | Hide HUD, saturation, letterbox, filters (Noir, Sepia, Vivid, Cold, Warm, Night vision, Retro), free camera (fly the camera for photos: WASD or left stick, mouse or right stick, E/Q or the triggers up and down, Shift fast, Z/X or LB/RB zoom; your character holds still while you look around), free camera mode (Enter or A while flying leaves the camera where it is and gives you back control: play, drive and fight seen from that shot, either fixed or turning to keep you in frame; the right stick or mouse spins your aim round you like a twin-stick game, level at chest height, so you only pick a direction), freeze world (while the menu is open or the free camera flies), wireframe world |
+| Teleport | The four cribs, the penthouse door and the Saints Row church. Teleport on map waypoint (set a waypoint on the pause map and you are there) and Go to my waypoint, from the Teleport to Waypoint mod. Your car and homies come along |
 | Settings | Master switch, what is on |
 
 Every row has a help line saying what it changes; sliders also show the
@@ -56,8 +67,6 @@ and have not been confirmed in play yet.
 ## What else it does
 
 **Vehicles**
-- Nitrous pushes your own car 1.5x harder (the game's own multiplier field,
-  which only acts while boosting), so traffic doesn't.
 - Tank mode: the car you drive is immovable in collisions, the game's own
   "infinite mass" mission effect. Other cars bounce off you.
 - Every car has nitrous (Shift), so a random car off the street has it too
@@ -100,7 +109,6 @@ The old shortcuts still work beside the menu.
 | 2 | high jump |
 | 3 | soft landing |
 | 4 | tank mode |
-| 5 | nitrous strength on your car |
 | 6 | auto fire |
 | 7 | max notoriety: cops and every gang to level 5 (`notoriety_teams`, `notoriety_level`) |
 | 0 | shows what is on and off |

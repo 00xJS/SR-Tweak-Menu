@@ -31,7 +31,7 @@ G.TAKE_DAMAGE   = 0x824470D0  -- (victim, attacker, ..., f1 = damage); every dam
 -- Player object fields.
 G.P = {
   POS = 20, TYPE = 72, DIRTY = 212, FLAGS = 216, NAV_NODE = 392, FALL_START = 404,
-  CONTROLLER = 476, STATE = 508, HEALTH_MAX = 1908, HEALTH = 1912, CASH = 2320,
+  CONTROLLER = 476, STATE = 508, HEALTH_MAX = 1908, HEALTH = 1912, CASH = 2320, INVENTORY = 2324,
   VEHICLE = 2496, VEHICLE_BYTE = 2569, NOT_DRIVING = 3456, EQUIPPED = 3548,
   RESPECT = 3848, RESPECT_BAR = 3860, NOTORIETY = 3868,
 }
@@ -60,6 +60,7 @@ G.ENGINE = { NITRO_STRENGTH = 396, EXTRA_TOP_SPEED = 400, FLAGS = 440 }
 G.ENGINE_FLAG_EXTRA_SPEED = 0x40
 G.MPH_TO_MS = 0.44704
 G.VEHICLE_REPAIR = 0x82536F30  -- (vehicle, f1 = fraction)
+G.VEHICLE_PART_DAMAGE = 0x825447D0  -- (part, vehicle, ...) -> 0; blast damage to one part (from the explosion code 0x825397E0)
 G.VEHICLE_NITRO  = 0x8253FE38  -- (vehicle, bool)
 G.VEHICLE_INDEX  = 0x8256A638  -- (name) -> vehicle info index, or -1
 G.GARAGE_DROP_STATE, G.GARAGE_DROP_INDEX = 0x827E5E44, 0x827E5E48  -- the vehicle cheat's delivery queue
@@ -74,12 +75,77 @@ G.MODEL_LOOKUP   = 0x82114928  -- (name, 0) -> character definition, 0 if unknow
 G.NUDGE_SPOT     = 0x824C2CF8  -- (pos*): moves a spawn point off anyone standing there
 G.HUMAN_CREATE   = 0x82479AB0  -- (kind, 2, def, pos*, rows*, 255, 0, 0) + stack {+84 u32 0, +94 u16 8, +103 u8 0} -> object
 G.STREAM_REF     = 0x8250C750  -- (0x83E876B0 + (id>>24)*204, id, 5, 0, 1): keep a model loaded
+G.STREAM_RELEASE = 0x8250CA48  -- (same entry, id, 5, 0, 0): give one such reference back (last arg 1 = all of them)
+G.CAN_DESPAWN    = 0x8244BC40  -- (human) -> 1 if the game may delete them (no script record, not in your party)
 G.STREAM_TABLE   = 0x83E876B0
 G.HUMAN_DEF      = 228         -- object+228 = definition; definition+608 = model id
+G.TEAM_LOOKUP    = 0x8244A6A8  -- (team name) -> team id; human+232 = team ("Playas" = the Saints)
+G.WEAPON_ITEM    = 0x823F7840  -- (weapon name) -> the inventory record a weapon is added with
+G.INV_ADD        = 0x82445C80  -- (human, record, count) -> inventory item
+G.INV_ADD_AMMO   = 0x82445B88  -- (human, item, reserve, magazine)
+G.NPC_EQUIP      = 0x82446280  -- (human, item): an NPC takes the item in hand
+G.PARTY_ADD      = 0x82483828  -- (player, npc, forced) -> added? (sets the follower up)
+G.HUD_SLOT       = 0x822D0188  -- (npc) -> HUD head slot or -1
+G.HUD_ADD        = 0x822D1418  -- (npc) registers the follower's head
+G.PARTY_COUNT    = 2096        -- player+2096: followers in the party list (10 at most)
+
+-- Car paint (the garage's own path). A car's customisation state is at
+-- vehicle+54688; state+0 is the ring of fitted parts (node +0 part, +8 next),
+-- state+8 the car's customisation data (+0 slot count, +4 slots of 16 bytes:
+-- +0 slot type, +8 part count, +12 parts of 52 bytes). A part has its colour
+-- slots at +36 (count) / +40 (60 bytes each: +20 count and +24 list of
+-- allowed palettes) and its slot index at +44.
+G.CUST_STATE     = 54688
+G.PALETTES       = 0x8371010C  -- *: 12 palettes of 24 bytes (+0 name, +16 colour count, +20 first colour, 80 bytes each)
+G.PALETTE_COUNT  = 0x83710108
+G.SLOT_TYPES     = 0x8371012C  -- *: slot types of 16 bytes; 46 = Body Color, 47 = Trim Color
+G.FIT_PART       = 0x8254C848  -- (state, part, 0)
+G.SET_COLOUR     = 0x8254CA48  -- (state, part, colour slot, colour record)
+
+-- Guns. The fire function decides bullet or projectile by the weapon's
+-- Ammo_Type (+100: 0 bullet, 1 projectile); the projectile path spawns the
+-- weapon's rocket from the fields at +312..+351 and blows it up with the
+-- explosion at +144. A rocket keeps its weapon pointer at +208 while it flies.
+G.FIRE           = 0x82470A50  -- (human, target, r5, bool): fires the equipped gun
+G.WEAPON_INFOS, G.WEAPON_COUNT = 0x832ABCA8, 0x832ABCAC   -- *: 520 bytes each
+G.PROJECTILES    = 0x8309A494  -- *: ring of live projectiles, next at +204
+G.IGNITE         = 0x8245E3A0  -- (victim, 0, attacker, 0, f1 = seconds) -> 1 if they caught fire
+G.BURN_TIME      = 0x838F83E4  -- float: the game's burn time (set at level load)
+G.BURNING        = 0x00400000  -- bit at human+216 while on fire
+
+-- Picture: the game's own colour grading (written every frame by the
+-- render setup unless a mod keeps writing it).
+G.TINT       = 0x827DDD0C  -- 3 floats: RGB multiplier, 1 1 1 = neutral
+G.TIME_DIV   = 0x827AA6D4  -- float, 1.0 normally; World Studio's world pause sets it huge
+
+-- Everyone in the world: a ring of people from *0x8309A788, next at +204
+-- (the debug console's super_ragdoll walks it the same way).
+G.HUMAN_LIST, G.HUMAN_NEXT = 0x8309A788, 204
+-- Animation states (anim_states.xtbl), as the script function
+-- set_animation_state applies them: the state's number at human+952, then
+-- the apply call.
+G.ANIM_STATE_INDEX = 0x822292F8  -- (state name) -> number, or -1
+G.ANIM_APPLY       = 0x82440200  -- (human, -1, -1, 0)
+G.ANIM_STATE       = 952
+-- Actions and animation files, played on any person directly (the engine
+-- calls behind the script functions play_action_do and
+-- play_custom_action_do, without the script engine).
+G.ACTION_INDEX     = 0x82229380  -- (action name) -> number (anim_actions), or -1
+G.ACTION_PLAY      = 0x82444F88  -- (human, action, 0, 0, 0, 0, 0, -1, f1 0, f2 1, f3 -1) -> played?
+G.ANIM_OWNER       = 568         -- human+568: animation owner; owner+3592 = its player handle
+G.ANIM_STOP        = 0x826F5BC0  -- (player handle)
+G.ANIM_RESET       = 0x826F5B88  -- (player handle, 0)
+G.ANIM_FILE_ID     = 0x826F6BA8  -- ("name.anim") -> animation id, or -1 when not loaded
+G.ANIM_PLAY_FILE   = 0x826F5C20  -- (player handle, id, 16, -, -, -, -, -1, f1 0, f2 1, f3 1, f4 -1) -> handle
+G.ANIM_SLOT_FOR    = 0x82226DA8  -- (owner+4, owner+0, n): what the custom-action path stores at human+592
+G.CUSTOM_STATE     = 297         -- human+756 while a custom animation plays
 
 -- Vehicles made in the world (the co-op mod creates cars this way).
 G.VEHICLE_CREATE = 0x82569700  -- (3, 2, info index, pos*, rows*, 0, 0, 0, f1 = 0) + stack {+84 u32 0, +95 u8 0, +100 u32 0} -> handle
 G.VEHICLE_FROM_HANDLE = 0x82569630  -- (handle) -> vehicle object
+G.VEHICLE_MODEL_REF = 0x82532360  -- (vehicle, 5): the game's own model request for a car; recorded at
+                                  -- vehicle+50304 so the car gives the reference back when it goes
+G.WEAPON_CHEAT   = 0x821F56C0  -- (params*): the weapon cheats' routine; params {u32 name*, u32 rounds}
 G.VEHICLE_PLACE  = 0x82535C68  -- (vehicle, pos*, rows*, 0)
 G.VEHICLE_INFO_TABLE, G.VEHICLE_INFO_SIZE = 0x83E8ABD8, 1196  -- first word of an entry = model id
 G.OBJECT_DESTROY = 0x823ACF50  -- (handle): removes a car or person the mod made
@@ -220,6 +286,9 @@ function G.floats(ctx, values, at)
   return buf
 end
 
+-- The address of buffer slot 0..3 (1 KB each), for small records.
+function G.buffer(ctx, slot) return ctx:r(1) - BUF_BASE + slot * 0x400 end
+
 -- Writes a UTF-16 string (ASCII only) into slot 2..3 and returns its address.
 function G.wstr(ctx, s)
   local buf = ctx:r(1) - BUF_BASE + 2 * 0x400
@@ -229,16 +298,21 @@ function G.wstr(ctx, s)
   return buf
 end
 
--- Calls fn with r3.. = args and f1 = f (optional). `stack` is an optional
+-- Calls fn with r3.. = args and f1 = f (optional; a list sets f1, f2 ...). `stack` is an optional
 -- list of { offset, width, value } written relative to the callee's r1, for
 -- the few game functions that take arguments past r10. Returns r3 and f1.
 function G.call(ctx, fn, args, f, stack)
   local r1 = ctx:r(1)
   local saved = {}
   for i = 3, 10 do saved[i] = ctx:r(i) end
-  local saved_f1 = ctx:f(1)
+  local saved_f = {}
+  for i = 1, 4 do saved_f[i] = ctx:f(i) end
   for i, v in ipairs(args or {}) do ctx:set_r(2 + i, v & 0xFFFFFFFF) end
-  if f ~= nil then ctx:set_f(1, f) end
+  if type(f) == "table" then
+    for i, v in ipairs(f) do ctx:set_f(i, v) end
+  elseif f ~= nil then
+    ctx:set_f(1, f)
+  end
   local callee_r1 = r1 - G.SCRATCH
   if stack then
     for _, a in ipairs(stack) do
@@ -252,7 +326,7 @@ function G.call(ctx, fn, args, f, stack)
   local r3, f1 = ctx:r(3) & 0xFFFFFFFF, ctx:f(1)
   ctx:set_r(1, r1)
   for i = 3, 10 do ctx:set_r(i, saved[i]) end
-  ctx:set_f(1, saved_f1)
+  for i = 1, 4 do ctx:set_f(i, saved_f[i]) end
   return r3, f1
 end
 
@@ -282,6 +356,8 @@ function G.script(ctx, code)
     alert_defined = true
     G.call(ctx, G.LUA_DOSTRING, { L, G.cstr(ctx, 'rawset(_UGGlobals, "_ALERT", function(m) message("Script error: " .. tostring(m), 5) end)', 1) })
   end
+  -- Logged before the call too, so a call that never returns still shows up.
+  if G.debug then wml.log("script start: " .. code) end
   local rc = G.call(ctx, G.LUA_DOSTRING, { L, G.cstr(ctx, code, 1) })
   local ok = rc == 0
   if G.debug or not ok then wml.log(string.format("script: %s -> %s", code, ok and "ok" or ("error " .. rc))) end

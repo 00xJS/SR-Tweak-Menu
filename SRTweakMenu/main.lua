@@ -16,6 +16,9 @@
 local G = require("game")
 local F = require("features")
 local MENU = require("menu")
+local WAYPOINT = require("waypoint")
+local HOMIES = require("homies")
+local FREECAM = require("freecam")
 
 local TELEPORT = 0x8243E6F8  -- (player, position*, 0, nav node or -1)
 
@@ -28,7 +31,6 @@ local KEYS = {
   jump    = tostring(wml.setting("key_jump", "2")),
   landing = tostring(wml.setting("key_landing", "3")),
   tank    = tostring(wml.setting("key_tank", "4")),
-  torque  = tostring(wml.setting("key_torque", "5")),
   fire    = tostring(wml.setting("key_fire", "6")),
   status  = tostring(wml.setting("key_status", "0")),
   notoriety = tostring(wml.setting("key_notoriety", "7")),
@@ -43,7 +45,6 @@ do
 end
 G.hud_seconds = wml.setting("hud_seconds", 3)
 G.debug, F.debug = debug, debug
-local player_torque = wml.setting("player_torque_multiplier", 1.5)
 local soft_landing = wml.setting("soft_landing", true)
 local max_fall     = wml.setting("max_fall_speed", 9)
 local auto_fire  = wml.setting("auto_fire", true)
@@ -84,10 +85,6 @@ local function handle_keys(ctx)
       elseif k == "notoriety" then
         local p = G.player()
         if p ~= 0 then G.hud(F.set_notoriety_all(ctx, p, noto_level, noto_gangs)) else G.hud("Notoriety: not in single player") end
-      elseif k == "torque" then
-        local it = F.items.torque
-        it.v = (it.v == 1.0) and player_torque or 1.0
-        G.hud(string.format("Engine torque x%.2f", it.v))
       else
         local it = F.items[k]
         it.v = not it.v
@@ -117,7 +114,7 @@ local last_vy, jumps = 0, 0
 local health_prev, landing_grace = nil, 0
 local fall_shield, shield_was = 0, nil
 local function drop_shield(p)
-  if shield_was ~= nil and p ~= 0 then G.player_flag(p, G.FLAG.INVULNERABLE, shield_was) end
+  if shield_was ~= nil and p ~= 0 then G.player_flag(p, G.FLAG.INVULNERABLE, F.on("god")) end
   shield_was = nil
   fall_shield = 0
 end
@@ -155,18 +152,36 @@ local function want_release()
   local half = math.max(2, math.floor(ups / math.max(1, fire_rate) / 2 + 0.5))
   return (tick % (2 * half)) >= half
 end
+-- The stop combo: ends a pose or repeating action (stop_pad in mod.ini).
+-- While the held buttons are down its last button is kept from the game,
+-- so RB + D-pad Up never also recruits.
+local stop_hold, stop_press = MENU.parse_combo(tostring(wml.setting("stop_pad", "RB+UP")))
+if not stop_hold then stop_hold, stop_press = MENU.parse_combo("RB+UP") end
+local stop_prev = 0
 wml.hook(G.INPUT_GET_STATE, function(ctx)
   local user, state = ctx:r(3), ctx:r(5)
   ctx:call_original()
   if user ~= 0 or state == 0 or (ctx:r(3) & 0xFFFFFFFF) ~= 0 then return end
   local buttons = read_u16(state + 4)
+  local flying = FREECAM.capture(state)
   local blank, hide = MENU.controller(buttons, read_u8(state + 6), read_u8(state + 7))
+  if flying and not blank then
+    -- The free camera has the pad: the game sees nothing pressed, and a new
+    -- packet number so a stick held when it started doesn't keep walking.
+    write_u32(state, read_u32(state) + 1)
+    blank = true
+  end
   if blank then
     -- Menu open: the game sees a pad with nothing pressed.
     write_u16(state + 4, 0); write_u8(state + 6, 0); write_u8(state + 7, 0)
     for i = 8, 14, 2 do write_u16(state + i, 0) end
     return
   end
+  if stop_press ~= 0 and (buttons & stop_hold) == stop_hold then
+    if (buttons & stop_press) ~= 0 and (stop_prev & stop_press) == 0 then F.stop_requested = true end
+    hide = hide | stop_press
+  end
+  stop_prev = buttons
   if hide ~= 0 then
     -- The menu combo's D-pad press, or buttons still held from the menu.
     write_u16(state + 4, buttons & ~hide & 0xFFFF)
@@ -186,7 +201,18 @@ end)
 --
 -- Every damage path (bullets, explosions, fire, vehicles) ends in
 -- 0x824470D0(victim, attacker, ..., f1 = damage); f1 = -1 means kill.
+-- God mode also covers what the invulnerability flag lets through: an
+-- explosion's fire on you, and the damage it does.
+wml.hook(G.IGNITE, function(ctx)
+  if F.on("god") and (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then ctx:set_r(3, 0) return end
+  ctx:call_original()
+end)
+
 wml.hook(G.TAKE_DAMAGE, function(ctx)
+  if F.on("god") and (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then
+    ctx:set_f(1, 0.0)                           -- no damage to you at all
+  end
+  F.note_hit(ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF)
   if F.on("one_hit") then
     local victim, attacker = ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF
     local p = read_u32(G.PLAYER)
@@ -197,13 +223,62 @@ wml.hook(G.TAKE_DAMAGE, function(ctx)
   ctx:call_original()
 end)
 
+-- --------------------------------------------------------- vehicle god mode
+--
+-- Explosions damage a car part by part through 0x825447D0 (part, vehicle);
+-- for the car you drive with Vehicle god mode on, nothing is broken.
+wml.hook(G.VEHICLE_PART_DAMAGE, function(ctx)
+  if F.on("veh_god") then
+    local p = G.player()
+    local v = p ~= 0 and G.vehicle_object(p)
+    if v and (ctx:r(4) & 0xFFFFFFFF) == v then
+      ctx:set_r(3, 0)
+      return
+    end
+  end
+  ctx:call_original()
+end)
+
+-- People the menu made are never deleted by the game: when it pushes their
+-- model out of memory it only hides them until the model is back. (Its
+-- "may I delete this person" check is the one that keeps mission people.)
+-- Once dead they are the game's to clear away like anyone else.
+wml.hook(G.CAN_DESPAWN, function(ctx)
+  local h = ctx:r(3) & 0xFFFFFFFF
+  if h ~= 0 and F.our_people[read_u32(h + 68)] ~= nil and wml.read_f32(h + G.P.HEALTH) > 0 then ctx:set_r(3, 0) return end
+  ctx:call_original()
+end)
+
+-- Freeze world safety: if the game update stops coming while the world is
+-- frozen, put time back from the render side.
+local last_update = os.clock()
+wml.on_frame(function()
+  if os.clock() - last_update > 1.5 and wml.read_f32(G.TIME_DIV) > 2 then
+    wml.write_f32(G.TIME_DIV, 1.0)
+    wml.log("freeze world: the game stopped updating, time put back")
+  end
+end)
+
 -- ------------------------------------------------------------ the update
 wml.hook(G.UPDATE, function(ctx)
+  FREECAM.before_update()
   ctx:call_original()
   tick = tick + 1
+  last_update = os.clock()
   handle_keys(ctx)
   MENU.input(ctx, tick)
+  F.set_menu_open(MENU.is_open())
   F.update(ctx)
+  WAYPOINT.enabled = F.on("waypoint_auto") and not WAYPOINT.standalone
+  HOMIES.limit = F.enabled and F.items.homies.v or 0
+  -- The free camera last, after everything that moves the game's camera.
+  if not FREECAM.update(ctx, MENU.is_open()) and F.items.free_cam.v then
+    F.items.free_cam.v = false
+    G.hud(FREECAM.why or "Free camera off")
+  end
+  if FREECAM.on then F.items.cam_mode.v = FREECAM.mode end   -- Enter / A switches to the shot
+  WAYPOINT.god = function() return F.on("god") end
+  WAYPOINT.update(ctx)
   MENU.render(tick)
   local p = G.player()
   if p ~= 0 then G.flush_hud(ctx) end
@@ -269,7 +344,7 @@ wml.hook(G.UPDATE, function(ctx)
           shield_was = G.has_bits(p + G.P.FLAGS, G.FLAG.INVULNERABLE)
           G.player_flag(p, G.FLAG.INVULNERABLE, true)
         elseif not want and shield_was ~= nil then
-          G.player_flag(p, G.FLAG.INVULNERABLE, shield_was or F.on("god"))
+          G.player_flag(p, G.FLAG.INVULNERABLE, F.on("god"))
           shield_was = nil
         end
         local health = read_f32(p + G.P.HEALTH)
