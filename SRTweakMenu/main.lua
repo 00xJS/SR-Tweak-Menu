@@ -19,6 +19,7 @@ local MENU = require("menu")
 local WAYPOINT = require("waypoint")
 local HOMIES = require("homies")
 local FREECAM = require("freecam")
+local ADDONS = require("addons")
 
 local TELEPORT = 0x8243E6F8  -- (player, position*, 0, nav node or -1)
 
@@ -238,6 +239,7 @@ wml.hook(G.UPDATE, function(ctx)
   F.update(ctx)
   WAYPOINT.enabled = F.on("waypoint_auto") and not WAYPOINT.standalone
   HOMIES.limit = F.enabled and F.items.homies.v or 0
+  ADDONS.write_flags(F.on("weapon_switch"), MENU.is_open(), FREECAM.on)
   -- The free camera last, after everything that moves the game's camera.
   if not FREECAM.update(ctx, MENU.is_open()) and F.items.free_cam.v then
     F.items.free_cam.v = false
@@ -342,3 +344,16 @@ end)
 
 wml.log(string.format("SR Tweak Menu: run x%.2f, jump x%.2f, rapid fire %s; menu key %s (debug=%s)", F.items.run_speed.v, F.items.jump_boost.v,
   F.items.fire.v and (fire_rate .. "/s") or "off", tostring(wml.setting("menu_key", "F5")), tostring(debug)))
+
+-- ------------------------------------------------------------ add-ons
+--
+-- Loaded last, so their hooks sit in front of the menu's: they see the
+-- controller after the menu has blanked it while the menu is open.
+do
+  local dir = wml.mod_folder .. "/addons"
+  local function quiet() return MENU.is_open() end
+  local function aim(n) return function() return F.enabled and F.items.aim_style.v == n and not FREECAM.on end end
+  F.addon.precise = ADDONS.load("Precise Aim", dir .. "/precise_aim", { gate = true, quiet = quiet, live = aim(2) })
+  F.addon.fine = ADDONS.load("Fine Aim", dir .. "/fine_aim", { quiet = quiet, live = aim(3) })
+  F.sync_aim_camera()
+end

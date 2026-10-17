@@ -364,6 +364,8 @@ category("Weapons", {
     help = "Your guns fire twice as fast, shotguns four times. Single-shot guns keep firing while you hold the trigger.",
     update = function() F.faster_guns(true) end,
     off = function() F.faster_guns(false) end },
+  { id = "weapon_switch", label = "Weapon switch", kind = "toggle", needs = "none", v = S("weapon_switch", false),
+    help = "By Eazeepz: keys 1 to 8 pick a weapon type, the mouse wheel or D-pad left/right steps. Tap Q (B on a pad) for the next weapon; hold it for the wheel and keep moving." },
   { id = "harder_hits", label = "Harder hits", kind = "toggle", needs = "none",
     help = "People you kill with a gun fly three times further.",
     update = function() F.harder_hits(true) end,
@@ -394,6 +396,105 @@ category("Weapons", {
 })
 
 -- ================================================================ Vehicles
+-- ================================================================ Aim
+--
+-- The aiming add-ons (addons.lua): Precise Aim by Eazeepz and Fine Aim by
+-- car123609, bundled with their permission. Only one runs at a time. Precise
+-- Aim's camera is tuned here instead of with its tuning keys.
+local AIM_STYLES = { "Game's own", "Precise Aim", "Fine Aim" }
+local AIM_START = { off = 1, precise = 2, fine = 3 }
+local AIM_NAMES = { SR1 = "Saints Row 1", SR2 = "Saints Row 2", SR3 = "Saints Row: The Third",
+  SR4 = "Saints Row IV", SR2022 = "Saints Row (2022)", TPA = "Gentle third person" }
+local function aim_label(name)
+  local n = tostring(name):match("^custom(%d+)$")
+  return AIM_NAMES[name] or (n and ("My camera " .. n)) or tostring(name)
+end
+-- Precise Aim's presets, from its files (the menu's list; the add-on applies them).
+local function aim_presets()
+  local list, seen = {}, {}
+  for _, file in ipairs({ "presets.ini", "my_presets.ini" }) do
+    local h = io.open(wml.mod_folder .. "/addons/precise_aim/" .. file, "r")
+    if h then
+      for line in h:lines() do
+        local name = line:match("^%s*%[(.-)%]%s*$")
+        if name and not seen[name] then seen[name] = true; list[#list + 1] = { name, aim_label(name) } end
+      end
+      h:close()
+    end
+  end
+  if #list == 0 then list[1] = { "SR1", aim_label("SR1") } end
+  return list
+end
+local AIM_PRESETS = aim_presets()
+F.AIM_PRESETS = AIM_PRESETS
+F.addon = {}
+local function precise() return F.addon.precise end
+local function cam_value(field)
+  return function() local M = precise() return M and M.get(field) or nil end
+end
+local function cam_set(field)
+  return function(ctx, p, v, it) local M = precise() if M then M.set(field, it.v) end end
+end
+-- The list shows the preset the add-on is using.
+function F.sync_aim_camera()
+  local M = precise()
+  local name = M and M.preset()
+  if not name then return end
+  for i, e in ipairs(AIM_PRESETS) do if e[1] == name then F.items.aim_camera.v = i return end end
+  AIM_PRESETS[#AIM_PRESETS + 1] = { name, aim_label(name) }
+  F.items.aim_camera.v = #AIM_PRESETS
+end
+
+category("Aim", {
+  { id = "aim_style", label = "Aim style", kind = "choice", needs = "none", options = AIM_STYLES,
+    v = AIM_START[tostring(S("aim_style", "off")):lower()] or 1,
+    help = "Precise Aim by Eazeepz: over-the-shoulder camera, accuracy by stance, slow walk. Fine Aim by car123609: aim zoom, slower turning, tighter shots. Both aim on right mouse; LT (Precise) or right stick click (Fine).",
+    change = function(ctx, p, v, it)
+      if it.v == 2 then return "Precise Aim: right mouse / LT to aim, Caps Lock / LB slow walk" end
+      if it.v == 3 then return "Fine Aim: hold right mouse, or click the right stick, to aim" end
+      return "Aim style: the game's own"
+    end },
+  { id = "aim_camera", label = "Aim camera", kind = "list", needs = "none", items = AIM_PRESETS,
+    help = "Precise Aim's camera: Left/Right to pick a style (Saints Row 1 to 2022 and yours), Enter to use it.",
+    run = function(ctx, p, v, it)
+      local M = precise()
+      if not M then return "Precise Aim isn't loaded" end
+      local e = AIM_PRESETS[it.v]
+      if not M.apply(e[1]) then return "No camera called " .. e[2] end
+      return "Aim camera: " .. e[2]
+    end },
+  { id = "aim_zoom", label = "Aim zoom", kind = "value", needs = "none", default = 0, min = -3.5, max = 0, step = 0.25,
+    fmt = fmt2, live = true, oneshot = true, read = cam_value("zoom"), change = cam_set("zoom"),
+    help = "How far Precise Aim's camera pulls in: 0 = not at all, every -2 halves the distance." },
+  { id = "aim_fov", label = "Aim field of view", kind = "value", needs = "none", default = 0.6, min = 0.5, max = 1, step = 0.05,
+    fmt = fmt2, live = true, oneshot = true, read = cam_value("fov"), change = cam_set("fov"),
+    help = "Field of view while aiming, as a share of the normal one (0.60 = 40% narrower)." },
+  { id = "aim_height", label = "Aim camera height", kind = "value", needs = "none", default = 1.69, min = 0.8, max = 2.6, step = 0.05,
+    fmt = fmt2, live = true, oneshot = true, read = cam_value("height"), change = cam_set("height"),
+    help = "Height of the aim camera above your feet, in metres." },
+  { id = "aim_shoulder", label = "Aim shoulder", kind = "value", needs = "none", default = 0.35, min = -1.5, max = 1.5, step = 0.05,
+    fmt = fmt2, live = true, oneshot = true, read = cam_value("shoulder"), change = cam_set("shoulder"),
+    help = "Sideways offset of the aim camera, in metres: positive = right shoulder, negative = left." },
+  { id = "aim_reset", label = "Reset aim camera", kind = "action", needs = "none",
+    help = "Puts zoom, field of view, height and shoulder back to the picked camera's own values.",
+    run = function()
+      local M = precise()
+      if not M then return "Precise Aim isn't loaded" end
+      M.apply(M.preset())
+      return "Aim camera reset to " .. aim_label(M.preset())
+    end },
+  { id = "aim_save", label = "Save as my camera", kind = "action", needs = "none",
+    help = "Saves this aim camera as one of yours (up to 8); it is listed under Aim camera.",
+    run = function()
+      local M = precise()
+      if not M then return "Precise Aim isn't loaded" end
+      local name, note = M.save_custom()
+      F.sync_aim_camera()
+      if note and note:find("full") then return "All 8 of your cameras are used" end
+      return "Saved as " .. aim_label(name)
+    end },
+})
+
 category("Vehicles", {
   { id = "veh_god", label = "Vehicle god mode", kind = "toggle", needs = "vehicle", vbits_a = G.VFLAG_A.INVULNERABLE,
     help = "Your car stays whole: no damage from crashes, gunfire or explosions, no parts falling off.",
@@ -2012,6 +2113,11 @@ end
 
 function F.adjust(ctx, it, dir, fast)
   if it.kind == "value" then
+    if it.live and it.read then
+      -- Step from what is shown (the game, or an add-on, may have changed it).
+      local ok, r = pcall(it.read, G.player())
+      if ok and type(r) == "number" then it.v = r end
+    end
     local step = it.step * (fast and 10 or 1)
     local nv = it.v + dir * step
     nv = math.max(it.min, math.min(it.max, nv))

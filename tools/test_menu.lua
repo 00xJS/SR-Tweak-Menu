@@ -31,10 +31,32 @@ for line in io.lines(folder .. "/mod.ini") do
   if k and not line:match("^%s*;") then settings[k] = v end
 end
 
+-- ---------------------------------------------------------------- add-ons
+-- The add-ons write files in their folder (camera.cfg, my_presets.ini), so the
+-- tests run them from a copy and the mod folder the code sees is that copy.
+local TMP = ((os.getenv("TEMP") or os.getenv("TMPDIR") or "/tmp"):gsub("\\", "/")) .. "/srtm_test_mod"
+local function mkdir(p)
+  if os.getenv("OS") == "Windows_NT" then os.execute('mkdir "' .. p:gsub("/", "\\") .. '" >nul 2>nul')
+  else os.execute("mkdir -p '" .. p .. "'") end
+end
+local function copy_file(src, dst)
+  local f = io.open(src, "rb")
+  if not f then return end
+  local data = f:read("a"); f:close()
+  local o = assert(io.open(dst, "wb")); o:write(data); o:close()
+end
+for _, a in ipairs({ { "precise_aim", { "main.lua", "presets.ini", "settings.ini" } },
+                     { "fine_aim", { "main.lua", "settings.ini" } } }) do
+  local dir = TMP .. "/addons/" .. a[1]
+  mkdir(dir)
+  for _, f in ipairs({ "camera.cfg", "my_presets.ini", "pool_backup.txt" }) do os.remove(dir .. "/" .. f) end
+  for _, f in ipairs(a[2]) do copy_file(folder .. "/addons/" .. a[1] .. "/" .. f, dir .. "/" .. f) end
+end
+
 -- ---------------------------------------------------------------- fake wml
 local hooks, frame_cbs, keys_down, keys_prev, taken, logs = {}, {}, {}, {}, {}, {}
 wml = {
-  mod_name = "test", mod_folder = folder,
+  mod_name = "test", mod_folder = TMP,
   log = function(...) local parts = {} for i = 1, select("#", ...) do parts[i] = tostring(select(i, ...)) end logs[#logs + 1] = table.concat(parts, " ") print("[log] " .. logs[#logs]) end,
   setting = function(name, default)
     local v = settings[name]
@@ -45,12 +67,25 @@ wml = {
   end,
   read_u8 = read_u8, read_u16 = read_u16, read_u32 = read_u32, read_f32 = read_f32,
   write_u8 = write_u8, write_u16 = write_u16, write_u32 = write_u32, write_f32 = write_f32,
-  key_down = function(k) return keys_down[k:upper()] == true end,
-  key_pressed = function(k) k = k:upper() return keys_down[k] == true and not keys_prev[k] end,
-  take_key = function(k, on) taken[k:upper()] = (on ~= false) end,
+  -- Keys are names or Windows key codes (2 = right mouse), as in the loader.
+  key_down = function(k) return keys_down[tostring(k):upper()] == true end,
+  key_pressed = function(k) k = tostring(k):upper() return keys_down[k] == true and not keys_prev[k] end,
+  take_key = function(k, on) taken[tostring(k):upper()] = (on ~= false) end,
   force_key = function() end,
   on_frame = function(f) frame_cbs[#frame_cbs + 1] = f end,
-  hook = function(addr, f) hooks[addr] = f end,
+  -- Hooks chain like the loader's: the newest runs first, and its
+  -- call_original reaches the one before it.
+  hook = function(addr, f)
+    local prev = hooks[addr]
+    if not prev then hooks[addr] = f return end
+    hooks[addr] = function(ctx)
+      local outer = ctx.call_original
+      local function inner(c) c.call_original = outer; prev(c); c.call_original = inner end
+      ctx.call_original = inner
+      f(ctx)
+      ctx.call_original = outer
+    end
+  end,
 }
 wml.settings = settings
 
@@ -989,6 +1024,47 @@ do
   F.items.car_grip.v = false; update(1)
   assert(read_f32(ACT + 28) == -20, "grip not put back when off")
   put_in_vehicle(false); update(1)
+end
+
+-- Add-ons: Precise Aim runs only with its aim style picked and is released
+-- when switched away; its camera is tuned from the Aim tab (files in the test
+-- copy, never the repo); Weapon Switch gets its flags in the mailbox.
+do
+  local M = F.addon.precise
+  assert(M and M.release and M.get, "Precise Aim not loaded")
+  local function logged(text) for _, l in ipairs(logs) do if l == text then return true end end return false end
+  F.items.aim_style.v = 2; update(1)
+  local c = make_ctx(); c.regs[3] = 0; c.regs[5] = 0x49000300
+  hooks[0x82788EC4](c)                                   -- a gated hook asks whether it is on
+  assert(logged("Precise Aim on"), "Precise Aim should switch on with its aim style")
+  F.items.aim_style.v = 1
+  hooks[0x82788EC4](c)
+  assert(logged("Precise Aim off"), "Precise Aim should switch off and release")
+  -- Camera presets and sliders.
+  local names = {}
+  for _, e in ipairs(F.items.aim_camera.items) do names[e[1]] = e[2] end
+  assert(names.SR1 == "Saints Row 1" and names.SR2022 == "Saints Row (2022)" and names.TPA, "presets missing")
+  for i, e in ipairs(F.items.aim_camera.items) do if e[1] == "SR3" then F.items.aim_camera.v = i end end
+  local msg = F.activate(make_ctx(), F.items.aim_camera)
+  assert(msg == "Aim camera: Saints Row: The Third" and M.preset() == "SR3", msg)
+  local z = M.get("zoom")
+  F.adjust(make_ctx(), F.items.aim_zoom, 1)
+  assert(math.abs(M.get("zoom") - (z + 0.25)) <= 0.125 + 1e-6, "zoom slider: " .. M.get("zoom"))   -- snaps to 0.25 steps
+  msg = F.activate(make_ctx(), F.items.aim_reset)
+  assert(math.abs(M.get("zoom") - z) < 1e-6, "reset should give the preset's zoom back")
+  local f = io.open(TMP .. "/addons/precise_aim/camera.cfg", "r")
+  assert(f, "camera.cfg not written in the test copy"); f:close()
+  f = io.open(folder .. "/addons/precise_aim/camera.cfg", "r")
+  assert(not f, "the test wrote into the repo"); if f then f:close() end
+  -- Weapon Switch: on, then the menu open stands it aside.
+  F.items.weapon_switch.v = true; update(1)
+  assert(read_u32(0x00F00034) == 0x53524144 and read_u32(0x00F00030) == 1, "weapon switch flags")
+  local MENU = require("menu")
+  if not MENU.is_open() then press("F5") end
+  update(1)
+  assert(read_u32(0x00F00030) == 3, "menu open flag")
+  press("F5"); F.items.weapon_switch.v = false; update(1)
+  assert(read_u32(0x00F00030) == 0, "weapon switch off")
 end
 
 -- Help text: whole sentences, at most 90 characters a line and 3 lines;

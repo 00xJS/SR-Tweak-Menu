@@ -6,6 +6,10 @@ TESTING.md
 *.vpp_xbox2
 *.xex
 *.xtbl
+# files the add-ons write while you play
+SRTweakMenu/addons/precise_aim/camera.cfg
+SRTweakMenu/addons/precise_aim/my_presets.ini
+SRTweakMenu/addons/precise_aim/pool_backup.txt
 # local research only, never part of the release
 research/
 __pycache__/

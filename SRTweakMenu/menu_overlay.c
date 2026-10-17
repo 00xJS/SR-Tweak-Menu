@@ -19,6 +19,8 @@
  *   +0x10 u32 lua_seq    Lua bumps it after writing a complete text
  *   +0x14 u32 text_len   bytes of text (0 = hide)
  *   +0x20 u32 ack_seq    the seq this DLL last displayed
+ *   +0x30 u32 addons     main.lua: bit0 Weapon switch on, bit1 menu open, bit2 free camera
+ *   +0x34 u32 'SRAD'     main.lua, once it writes +0x30 (weapon_switch.dll reads both)
  *   +0x40 ..  text       UTF-8, up to 8 KB
  *
  * Build (the toolchain clang that comes with Saints Reborn):
