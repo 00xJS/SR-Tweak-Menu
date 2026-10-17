@@ -55,7 +55,9 @@ constexpr uint32_t PAUSE_ON_WHEEL = 0x8370DED5;  // byte pause_on_weapon_switch
 
 // SR Tweak Menu: the menu's word in its mailbox (guest memory, menu_overlay.c):
 // +0x34 'SRAD' once the menu runs, +0x30 bit0 = Weapon switch on, bit1 = the
-// menu is open, bit2 = the free camera is on.
+// menu is open, bit2 = the free camera is on, bit3 = the D-pad stays the game's,
+// bit4 = a tap of the wheel button does not switch, bit5 = one of the menu's
+// controller combos is being pressed (never a tap or the wheel).
 constexpr uint32_t SRTM_FLAGS = 0x00F00030;
 constexpr uint32_t SRTM_MAGIC_AT = 0x00F00034;
 constexpr uint32_t SRTM_MAGIC = 0x53524144;   // 'SRAD'
@@ -716,8 +718,15 @@ void Hook_Input(WmlContext* ctx, uint8_t* base) {
   env.wasd_taken = g_wasd_taken;
   env.now_ms = NowMs();
 
+  // SR Tweak Menu: the menu's D-pad and tap choices, and its combos.
+  const uint32_t menu_flags = g_api->read_u32(SRTM_FLAGS);
+  Settings s = g_set;
+  if (menu_flags & 8u) s.pad_next = s.pad_prev = 0;
+  if (menu_flags & 16u) s.tap_switch = false;
+  if ((menu_flags & 32u) && (pad.buttons & env.wheel_button)) g_pad.state = PadFilter::kSwallow;
+
   int pick_x = g_pick_x.load(), pick_y = g_pick_y.load();
-  const PadResult r = FilterPad(g_pad, g_set, env, pad, pick_x, pick_y);
+  const PadResult r = FilterPad(g_pad, s, env, pad, pick_x, pick_y);
   g_pick_x.store(pick_x);
   g_pick_y.store(pick_y);
   g_pick_active.store(r.pick_active);

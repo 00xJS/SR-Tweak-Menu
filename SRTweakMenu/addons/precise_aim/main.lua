@@ -1792,4 +1792,12 @@ if type(wml.srtm) == "table" then
     save_cfg()
     return PR.name, PR.note
   end
+  -- The menu's Aim button row: true = toggle, false = hold, nil = this file's setting.
+  local own_toggle = S.aim_toggle
+  function M.set_toggle(on)
+    if on == nil then on = own_toggle end
+    S.aim_toggle = on
+    st.aim_tog, st.veh_tog = false, false
+  end
+  function M.toggle() return S.aim_toggle end
 end

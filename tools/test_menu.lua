@@ -1063,8 +1063,27 @@ do
   if not MENU.is_open() then press("F5") end
   update(1)
   assert(read_u32(0x00F00030) == 3, "menu open flag")
-  press("F5"); F.items.weapon_switch.v = false; update(1)
+  press("F5")
+  -- The D-pad and tap choices, and a menu combo held, reach Weapon Switch too.
+  F.items.weapon_dpad.v, F.items.weapon_tap.v = 2, 2; update(1)
+  assert(read_u32(0x00F00030) == 1 | 8 | 16, "D-pad / tap flags: " .. read_u32(0x00F00030))
+  local PADC = 0x49000400
+  write_u16(PADC + 4, 0x0200 | 0x0002)                   -- RB + D-pad Down, the menu combo
+  local cc = make_ctx(); cc.regs[3] = 0; cc.regs[5] = PADC
+  hooks[0x82788EC4](cc)
+  assert((read_u32(0x00F00030) & 32) ~= 0, "combo flag")
+  if require("menu").is_open() then press("F5") end
+  write_u16(PADC + 4, 0); cc = make_ctx(); cc.regs[3] = 0; cc.regs[5] = PADC
+  hooks[0x82788EC4](cc)
+  assert((read_u32(0x00F00030) & 32) == 0, "combo flag cleared")
+  F.items.weapon_dpad.v, F.items.weapon_tap.v = 1, 1
+  F.items.weapon_switch.v = false; update(1)
   assert(read_u32(0x00F00030) == 0, "weapon switch off")
+  -- Aim button: toggle / hold / the add-on's own, handed to Precise Aim.
+  local own = M.toggle()
+  F.items.aim_button.v = 3; F.apply_aim_button(); assert(M.toggle() == false, "hold")
+  F.items.aim_button.v = 2; F.apply_aim_button(); assert(M.toggle() == true, "toggle")
+  F.items.aim_button.v = 1; F.apply_aim_button(); assert(M.toggle() == own, "own setting")
 end
 
 -- Help text: whole sentences, at most 90 characters a line and 3 lines;

@@ -1,7 +1,8 @@
 -- Fine Aim - Precision Gunplay 1.5.4 by car123609!,
 -- https://github.com/car123609/SaintsReborn-Fine-Aim-Precision-Gunplay
--- Bundled with SR Tweak Menu with the author's permission. One change, marked
--- SR Tweak Menu below: the menu switches the mod on and off instead of enable_key.
+-- Bundled with SR Tweak Menu with the author's permission. Two additions, marked
+-- SR Tweak Menu below: the menu switches the mod on and off instead of enable_key,
+-- and its Aim button row sets toggle or hold.
 
 -- Fine Aim for Whompay's Mod Loader, using the supplied TU0 XEX layout.
 -- Selects the player's native ready locomotion poses only during fine aim.
@@ -789,3 +790,18 @@ if not standing_reload_hook then
     wml.log("Fine Aim standing reload fix unavailable: native reload-entry hook could not be installed.")
 end
 wml.log(string.format("Fine Aim 1.5.4 loaded: jumping blocks aim; native standing reload preparation %s; parent-camera sensitivity; walking allows aim; sprint cancels; post-shot hold %d ms; all code in main.lua. Hold right mouse; controller %s %s. Spread %.2fx, look %.2fx, FOV %.2fx. F8 toggles; Alt secondary attack.", standing_reload_hook and "active" or "unavailable", post_shot_hold_ms, controller_button, controller_toggle and "toggle" or "hold", spread_multiplier, sensitivity, fov_multiplier))
+
+-- SR Tweak Menu: the menu's Aim button row. true = toggle, false = hold, for the
+-- mouse and the controller; nil = this mod's own settings.
+if type(wml.srtm) == "table" then
+    local own_mouse, own_pad = toggle_aim, controller_toggle
+    wml.srtm.set_toggle = function(on)
+        if on == nil then
+            toggle_aim, controller_toggle = own_mouse, own_pad
+        else
+            toggle_aim, controller_toggle = on, on
+        end
+        latched = false
+        clear_controller()
+    end
+end

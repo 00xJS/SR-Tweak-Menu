@@ -118,6 +118,8 @@ wml.hook(G.INPUT_GET_STATE, function(ctx)
   ctx:call_original()
   if user ~= 0 or state == 0 or (ctx:r(3) & 0xFFFFFFFF) ~= 0 then return end
   local buttons = read_u16(state + 4)
+  ADDONS.set_combo(MENU.combo_down(buttons)
+    or (stop_press ~= 0 and (buttons & stop_hold) == stop_hold and (buttons & stop_press) ~= 0))
   local flying = FREECAM.capture(state)
   local blank, hide = MENU.controller(buttons, read_u8(state + 6), read_u8(state + 7))
   if flying and not blank then
@@ -239,7 +241,8 @@ wml.hook(G.UPDATE, function(ctx)
   F.update(ctx)
   WAYPOINT.enabled = F.on("waypoint_auto") and not WAYPOINT.standalone
   HOMIES.limit = F.enabled and F.items.homies.v or 0
-  ADDONS.write_flags(F.on("weapon_switch"), MENU.is_open(), FREECAM.on)
+  ADDONS.write_flags(F.on("weapon_switch"), MENU.is_open(), FREECAM.on,
+    F.items.weapon_dpad.v == 2, F.items.weapon_tap.v == 2)
   -- The free camera last, after everything that moves the game's camera.
   if not FREECAM.update(ctx, MENU.is_open()) and F.items.free_cam.v then
     F.items.free_cam.v = false
@@ -356,4 +359,5 @@ do
   F.addon.precise = ADDONS.load("Precise Aim", dir .. "/precise_aim", { gate = true, quiet = quiet, live = aim(2) })
   F.addon.fine = ADDONS.load("Fine Aim", dir .. "/fine_aim", { quiet = quiet, live = aim(3) })
   F.sync_aim_camera()
+  F.apply_aim_button()
 end

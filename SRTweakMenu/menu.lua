@@ -255,6 +255,11 @@ end
 -- open), else a mask of PAD bits to hide from the game: the combo's last
 -- button while the held ones are down, and whatever was still held when the
 -- menu closed, until it is let go.
+-- True while the menu combo is being pressed (its held buttons and its last one).
+function M.combo_down(buttons)
+  return combo_hold ~= 0 and (buttons & combo_hold) == combo_hold and (buttons & combo_press) ~= 0
+end
+
 function M.controller(buttons, lt, rt)
   local pad = buttons | ((lt or 0) >= TRIGGER_PRESSED and PAD.LT or 0) | ((rt or 0) >= TRIGGER_PRESSED and PAD.RT or 0)
   M.pad = pad

@@ -366,6 +366,12 @@ category("Weapons", {
     off = function() F.faster_guns(false) end },
   { id = "weapon_switch", label = "Weapon switch", kind = "toggle", needs = "none", v = S("weapon_switch", false),
     help = "By Eazeepz: keys 1 to 8 pick a weapon type, the mouse wheel or D-pad left/right steps. Tap Q (B on a pad) for the next weapon; hold it for the wheel and keep moving." },
+  { id = "weapon_dpad", label = "Weapon switch D-pad", kind = "choice", needs = "none",
+    options = { "Switches weapons", "Game's taunts" }, v = (tostring(S("weapon_dpad", "switch")):lower() == "taunts") and 2 or 1,
+    help = "With Weapon switch on: D-pad left/right step through your weapons, or keep the game's taunts." },
+  { id = "weapon_tap", label = "Weapon wheel tap", kind = "choice", needs = "none",
+    options = { "Next weapon", "Wheel only" }, v = (tostring(S("weapon_tap", "next")):lower() == "wheel") and 2 or 1,
+    help = "With Weapon switch on: a quick tap of the wheel button (B, or RB on layout 3) gives the next weapon, or does nothing." },
   { id = "harder_hits", label = "Harder hits", kind = "toggle", needs = "none",
     help = "People you kill with a gun fly three times further.",
     update = function() F.harder_hits(true) end,
@@ -402,6 +408,18 @@ category("Weapons", {
 -- car123609, bundled with their permission. Only one runs at a time. Precise
 -- Aim's camera is tuned here instead of with its tuning keys.
 local AIM_STYLES = { "Game's own", "Precise Aim", "Fine Aim" }
+local AIM_BUTTONS = { "Each add-on's own", "Toggle", "Hold" }
+local AIM_BUTTON_START = { own = 1, toggle = 2, hold = 3 }
+-- Hold or toggle, handed to both aim add-ons (nil = their own setting).
+function F.apply_aim_button()
+  local v = F.items.aim_button.v
+  local on = nil
+  if v == 2 then on = true elseif v == 3 then on = false end
+  for _, name in ipairs({ "precise", "fine" }) do
+    local M = F.addon[name]
+    if M and M.set_toggle then pcall(M.set_toggle, on) end
+  end
+end
 local AIM_START = { off = 1, precise = 2, fine = 3 }
 local AIM_NAMES = { SR1 = "Saints Row 1", SR2 = "Saints Row 2", SR3 = "Saints Row: The Third",
   SR4 = "Saints Row IV", SR2022 = "Saints Row (2022)", TPA = "Gentle third person" }
@@ -454,6 +472,10 @@ category("Aim", {
       if it.v == 3 then return "Fine Aim: hold right mouse, or click the right stick, to aim" end
       return "Aim style: the game's own"
     end },
+  { id = "aim_button", label = "Aim button", kind = "choice", needs = "none", options = AIM_BUTTONS,
+    v = AIM_BUTTON_START[tostring(S("aim_button", "own")):lower()] or 1,
+    help = "Precise Aim and Fine Aim, mouse and controller: press once to aim and again to stop, or hold to aim. Each add-on's own: Precise toggles, Fine holds the mouse and toggles the pad.",
+    change = function() F.apply_aim_button() end },
   { id = "aim_camera", label = "Aim camera", kind = "list", needs = "none", items = AIM_PRESETS,
     help = "Precise Aim's camera: Left/Right to pick a style (Saints Row 1 to 2022 and yours), Enter to use it.",
     run = function(ctx, p, v, it)

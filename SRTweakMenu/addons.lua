@@ -132,11 +132,23 @@ function AD.load(name, folder, opts)
   return srtm
 end
 
--- The flags Weapon Switch reads (bit0 on, bit1 menu open, bit2 free camera).
-function AD.write_flags(on, menu_open, freecam)
-  local v = (on and 1 or 0) | (menu_open and 2 or 0) | (freecam and 4 or 0)
+-- The flags Weapon Switch reads: bit0 on, bit1 menu open, bit2 free camera,
+-- bit3 the D-pad is the game's again, bit4 a tap of the wheel button does not
+-- switch, bit5 a menu combo is being pressed (so it is never a tap).
+local flags = 0
+local function put_flags(v)
+  flags = v
   if wml.read_u32(FLAGS) ~= v then wml.write_u32(FLAGS, v) end
   if wml.read_u32(FLAGS_MAGIC) ~= MAGIC then wml.write_u32(FLAGS_MAGIC, MAGIC) end
+end
+function AD.write_flags(on, menu_open, freecam, no_dpad, no_tap)
+  put_flags((on and 1 or 0) | (menu_open and 2 or 0) | (freecam and 4 or 0) | (no_dpad and 8 or 0)
+    | (no_tap and 16 or 0) | (flags & 32))
+end
+-- From the controller hook, which runs just before Weapon Switch looks at the pad.
+function AD.set_combo(down)
+  local v = down and (flags | 32) or (flags & ~32)
+  if v ~= flags then put_flags(v) end
 end
 
 return AD
