@@ -47,8 +47,8 @@ local function read_settings(path)
   local out, section = {}, nil
   local f = io.open(path, "r")
   if not f then return out end
-  for line in f:lines() do
-    line = line:gsub("\r$", "")
+  for raw in f:lines() do
+    local line = raw:gsub("\r$", "")
     local s = line:match("^%s*%[(.-)%]%s*$")
     if s then section = s:lower()
     elseif section == "settings" and not line:match("^%s*[;#]") then
