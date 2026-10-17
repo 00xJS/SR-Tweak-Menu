@@ -86,14 +86,29 @@ F.BODYGUARDS = BODYGUARDS
 local read_u8, read_u16, read_u32, read_f32 = wml.read_u8, wml.read_u16, wml.read_u32, wml.read_f32
 local write_u8, write_u16, write_u32, write_f32 = wml.write_u8, wml.write_u16, wml.write_u32, wml.write_f32
 
-local function category(name, items)
-  F.categories[#F.categories + 1] = { name = name, items = items }
+local function register(items)
   for _, it in ipairs(items) do
     it.needs = it.needs or "player"
     if it.kind == "toggle" then it.v = it.v == true
     elseif it.kind == "value" then it.v = it.v or it.default
     elseif it.kind == "choice" or it.kind == "list" then it.v = it.v or 1 end
     F.items[it.id] = it
+  end
+end
+local function category(name, items)
+  F.categories[#F.categories + 1] = { name = name, items = items }
+  register(items)
+end
+-- More rows for a tab defined earlier, after the row `after`.
+local function add_rows(name, after, items)
+  register(items)
+  for _, cat in ipairs(F.categories) do
+    if cat.name == name then
+      local at = #cat.items + 1
+      for i, it in ipairs(cat.items) do if it.id == after then at = i + 1 end end
+      for k, it in ipairs(items) do table.insert(cat.items, at + k - 1, it) end
+      return
+    end
   end
 end
 
@@ -463,7 +478,25 @@ function F.sync_aim_camera()
   F.items.aim_camera.v = #AIM_PRESETS
 end
 
-category("Aim", {
+-- Saves a tuning row's value in an add-on's settings file, so it is there next time.
+local function save_addon(name, key, value)
+  local M = F.addon[name]
+  if M and M.folder and F.ADDONS then F.ADDONS.save_setting(M.folder .. "/settings.ini", key, value) end
+end
+local function fine_value(key) return function() local M = F.addon.fine return M and M.get and M.get(key) or nil end end
+local function fine_set(key, ini)
+  return function(ctx, p, v, it)
+    local M = F.addon.fine
+    if M and M.set then M.set(key, it.v) save_addon("fine", ini, string.format("%.2f", it.v)) end
+  end
+end
+
+add_rows("Weapons", "weapon_tap", {
+  { id = "camera_turn", label = "Camera turn speed", kind = "value", needs = "none", default = 1.0, min = 0.5, max = 2.0, step = 0.1,
+    fmt = fmtx, live = true, oneshot = true,
+    read = function() local v = read_f32(G.LOOK_SPEED_X) return (v > 0.05 and v < 10) and v or nil end,
+    help = "The game's look sensitivity (Options > Controls): how fast the stick turns the camera. Saved for next time. With Precise Aim's own turning it sets the mouse too.",
+    change = function(ctx, p, v, it) F.set_camera_turn(it.v) end },
   { id = "aim_style", label = "Aim style", kind = "choice", needs = "none", options = AIM_STYLES,
     v = AIM_START[tostring(S("aim_style", "off")):lower()] or 1,
     help = "Precise Aim by Eazeepz: over-the-shoulder camera, accuracy by stance, slow walk. Fine Aim by car123609: aim zoom, slower turning, tighter shots. Both aim on right mouse; LT (Precise) or right stick click (Fine).",
@@ -476,6 +509,30 @@ category("Aim", {
     v = AIM_BUTTON_START[tostring(S("aim_button", "own")):lower()] or 1,
     help = "Precise Aim and Fine Aim, mouse and controller: press once to aim and again to stop, or hold to aim. Each add-on's own: Precise toggles, Fine holds the mouse and toggles the pad.",
     change = function() F.apply_aim_button() end },
+  { id = "precise_turning", label = "Precise Aim turning", kind = "choice", needs = "none",
+    options = { "Game's own", "Precise Aim's" }, v = (tostring(S("precise_turning", "game")):lower() == "precise") and 2 or 1,
+    help = "Game's own: turning feels like the normal game, Precise Aim only changes it while you aim. Precise Aim's: its own stick curve and the game's look sensitivity on the mouse too.",
+    change = function(ctx, p, v, it)
+      F.apply_precise_turning()
+      if F.ADDONS then F.ADDONS.save_setting(wml.mod_folder .. "/mod.ini", "precise_turning", it.v == 2 and "precise" or "game") end
+    end },
+  { id = "precise_aim_turn", label = "Precise Aim aim turn speed", kind = "value", needs = "none", default = 1.0, min = 0.1, max = 3.0, step = 0.1,
+    fmt = fmtx, live = true, oneshot = true,
+    read = function() local M = F.addon.precise return M and M.aim_sens and M.aim_sens() or nil end,
+    help = "How fast you turn while aiming with Precise Aim, compared with not aiming (x0.5 = half as fast).",
+    change = function(ctx, p, v, it)
+      local M = F.addon.precise
+      if M and M.set_aim_sens then M.set_aim_sens(it.v) save_addon("precise", "aim_sensitivity", string.format("%.2f", it.v)) end
+    end },
+  { id = "fine_aim_turn", label = "Fine Aim aim turn speed", kind = "value", needs = "none", default = 0.4, min = 0.05, max = 1.0, step = 0.05,
+    fmt = fmtx, live = true, oneshot = true, read = fine_value("sensitivity"), change = fine_set("sensitivity", "sensitivity_multiplier"),
+    help = "How fast you turn while aiming with Fine Aim (x1 = as fast as not aiming)." },
+  { id = "fine_aim_zoom", label = "Fine Aim zoom", kind = "value", needs = "none", default = 0.75, min = 0.25, max = 1.0, step = 0.05,
+    fmt = fmt2, live = true, oneshot = true, read = fine_value("fov"), change = fine_set("fov", "fov_multiplier"),
+    help = "Field of view while aiming with Fine Aim, as a share of the normal one (0.75 = a quarter narrower)." },
+  { id = "fine_aim_spread", label = "Fine Aim spread", kind = "value", needs = "none", default = 0.25, min = 0, max = 1.0, step = 0.05,
+    fmt = fmt2, live = true, oneshot = true, read = fine_value("spread"), change = fine_set("spread", "spread_multiplier"),
+    help = "Bullet spread while aiming with Fine Aim (0 = none, 1 = the game's own)." },
   { id = "aim_camera", label = "Aim camera", kind = "list", needs = "none", items = AIM_PRESETS,
     help = "Precise Aim's camera: Left/Right to pick a style (Saints Row 1 to 2022 and yours), Enter to use it.",
     run = function(ctx, p, v, it)
@@ -516,6 +573,20 @@ category("Aim", {
       return "Saved as " .. aim_label(name)
     end },
 })
+
+-- Camera turn speed: the game's own look sensitivity, kept in mod.ini.
+function F.set_camera_turn(v)
+  if not (type(v) == "number" and v >= 0.5 and v <= 2.0) then return end
+  local ok = read_f32(G.LOOK_SPEED_X)
+  if not (ok > 0.05 and ok < 10) then return end
+  write_f32(G.LOOK_SPEED_X, v); write_f32(G.LOOK_SPEED_Y, v)
+  if F.ADDONS then F.ADDONS.save_setting(wml.mod_folder .. "/mod.ini", "camera_turn_speed", string.format("%.1f", v)) end
+end
+F.camera_turn_start = S("camera_turn_speed", 0)
+function F.apply_precise_turning()
+  local M = F.addon.precise
+  if M and M.set_turning then M.set_turning(F.items.precise_turning.v == 1) end
+end
 
 category("Vehicles", {
   { id = "veh_god", label = "Vehicle god mode", kind = "toggle", needs = "vehicle", vbits_a = G.VFLAG_A.INVULNERABLE,

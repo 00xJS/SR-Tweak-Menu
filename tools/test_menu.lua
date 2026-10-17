@@ -1084,6 +1084,23 @@ do
   F.items.aim_button.v = 3; F.apply_aim_button(); assert(M.toggle() == false, "hold")
   F.items.aim_button.v = 2; F.apply_aim_button(); assert(M.toggle() == true, "toggle")
   F.items.aim_button.v = 1; F.apply_aim_button(); assert(M.toggle() == own, "own setting")
+  -- The aim rows are in the Weapons tab (no Aim tab), with the turning rows.
+  local tabs, in_weapons = {}, {}
+  for _, cat in ipairs(F.categories) do
+    tabs[cat.name] = true
+    if cat.name == "Weapons" then for _, it in ipairs(cat.items) do in_weapons[it.id] = true end end
+  end
+  assert(not tabs.Aim and in_weapons.aim_style and in_weapons.aim_camera and in_weapons.camera_turn and in_weapons.fine_aim_turn, "aim rows not in Weapons")
+  -- Camera turn speed writes the game's look sensitivity (both axes).
+  write_f32(0x827D9778 + 312, 1.0); write_f32(0x827D9778 + 316, 1.0)
+  F.items.camera_turn.v = 1.0
+  F.adjust(make_ctx(), F.items.camera_turn, 1)
+  assert(math.abs(read_f32(0x827D9778 + 312) - 1.1) < 1e-4 and math.abs(read_f32(0x827D9778 + 316) - 1.1) < 1e-4, "camera turn speed")
+  -- Precise Aim turning: the game's own by default.
+  F.items.precise_turning.v = 2; F.apply_precise_turning()
+  F.items.precise_turning.v = 1; F.apply_precise_turning()
+  local pa = M.aim_sens(); F.adjust(make_ctx(), F.items.precise_aim_turn, -1)
+  assert(math.abs(M.aim_sens() - (pa - 0.1)) < 1e-6, "Precise aim turn speed")
 end
 
 -- Help text: whole sentences, at most 90 characters a line and 3 lines;

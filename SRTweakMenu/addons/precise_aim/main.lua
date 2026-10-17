@@ -1800,4 +1800,17 @@ if type(wml.srtm) == "table" then
     st.aim_tog, st.veh_tog = false, false
   end
   function M.toggle() return S.aim_toggle end
+  -- The menu's turning rows: the game's own turning, or this mod's (its own
+  -- right-stick curve, and the game's look sensitivity on the mouse too); and
+  -- the turn speed while aiming (aim_sensitivity).
+  local own_turning = { S.pad_direct_hip, S.pad_direct_aim, S.pad_direct_veh, S.mouse_game_sens }
+  function M.set_turning(game_own)
+    if game_own then
+      S.pad_direct_hip, S.pad_direct_aim, S.pad_direct_veh, S.mouse_game_sens = false, false, false, false
+    else
+      S.pad_direct_hip, S.pad_direct_aim, S.pad_direct_veh, S.mouse_game_sens = own_turning[1], own_turning[2], own_turning[3], own_turning[4]
+    end
+  end
+  function M.aim_sens() return S.aim_sens end
+  function M.set_aim_sens(v) S.aim_sens = clamp(v, 0.1, 3.0) end
 end

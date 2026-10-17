@@ -14,9 +14,29 @@
 -- Precise Aim has no on/off of its own: while it is off its hooks only run the
 -- game's code, and its release() (in its file) first undoes what it changed.
 -- Fine Aim has its own on/off (enabled), which the menu drives through
--- srtm.live(). Weapon Switch reads the menu's flags from the mailbox.
+-- srtm.live(); its hooks are passed straight through while it is off too (its
+-- camera hook would otherwise keep reading the shared mouse movement, which
+-- Precise Aim needs), and its per-frame code winds itself down. Weapon Switch
+-- reads the menu's flags from the mailbox.
 
 local AD = { loaded = {} }
+
+-- Writes `name = value` into an ini file, keeping everything else as it is.
+function AD.save_setting(path, name, value)
+  local f = io.open(path, "rb")
+  if not f then return false end
+  local text = f:read("a")
+  f:close()
+  local line = name .. " = " .. tostring(value)
+  local new, n = text:gsub("(\n)" .. name .. "[ \t]*=[^\r\n]*", "%1" .. line, 1)
+  if n == 0 then new = text:gsub("[\r\n]*$", "") .. "\n" .. line .. "\n" end
+  f = io.open(path, "wb")
+  if not f then return false end
+  f:write(new)
+  f:close()
+  return true
+end
+
 
 local MAILBOX = 0x00F00000
 local FLAGS, FLAGS_MAGIC = MAILBOX + 0x30, MAILBOX + 0x34
@@ -59,10 +79,11 @@ local function setting_reader(values)
 end
 
 -- Runs folder/main.lua with a stand-in wml. opts: live() -> bool, quiet() ->
--- bool (keys read as up), gate = true to pass the hooks straight through while
--- off, release() run once when it goes off.
+-- bool (keys read as up), gate = true to pass the hooks and the per-frame code
+-- straight through while off ("hooks" = only the hooks).
+function AD.settings_file(folder) return folder .. "/settings.ini" end
 function AD.load(name, folder, opts)
-  local srtm = { live = opts.live }
+  local srtm = { live = opts.live, folder = folder }
   local values = read_settings(folder .. "/settings.ini")
   local taken, forced = {}, {}
   local proxy = setmetatable({}, { __index = wml })
@@ -110,10 +131,12 @@ function AD.load(name, folder, opts)
         ctx:call_original()
       end)
     end
-    proxy.on_frame = function(fn)
-      return wml.on_frame(function(...)
-        if live_now() then return fn(...) end
-      end)
+    if opts.gate ~= "hooks" then
+      proxy.on_frame = function(fn)
+        return wml.on_frame(function(...)
+          if live_now() then return fn(...) end
+        end)
+      end
     end
   end
 

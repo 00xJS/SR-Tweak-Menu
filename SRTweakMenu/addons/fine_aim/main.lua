@@ -1,8 +1,8 @@
 -- Fine Aim - Precision Gunplay 1.5.4 by car123609!,
 -- https://github.com/car123609/SaintsReborn-Fine-Aim-Precision-Gunplay
--- Bundled with SR Tweak Menu with the author's permission. Two additions, marked
+-- Bundled with SR Tweak Menu with the author's permission. Additions, marked
 -- SR Tweak Menu below: the menu switches the mod on and off instead of enable_key,
--- and its Aim button row sets toggle or hold.
+-- and its rows set toggle or hold, turn speed, zoom and spread.
 
 -- Fine Aim for Whompay's Mod Loader, using the supplied TU0 XEX layout.
 -- Selects the player's native ready locomotion poses only during fine aim.
@@ -803,5 +803,20 @@ if type(wml.srtm) == "table" then
         end
         latched = false
         clear_controller()
+    end
+    -- The menu's Fine Aim rows: turn speed, zoom and spread while aiming.
+    local LIMITS = { sensitivity = { 0.05, 1.0 }, fov = { 0.25, 1.0 }, spread = { 0.0, 1.0 } }
+    wml.srtm.get = function(k)
+        if k == "sensitivity" then return sensitivity end
+        if k == "fov" then return fov_multiplier end
+        if k == "spread" then return spread_multiplier end
+    end
+    wml.srtm.set = function(k, v)
+        local l = LIMITS[k]
+        if not l or type(v) ~= "number" then return end
+        v = math.max(l[1], math.min(l[2], v))
+        if k == "sensitivity" then sensitivity = v
+        elseif k == "fov" then fov_multiplier = v
+        else spread_multiplier = v end
     end
 end

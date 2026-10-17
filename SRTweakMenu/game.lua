@@ -20,6 +20,7 @@ G.CUTSCENE_A, G.CUTSCENE_B = 0x8370D991, 0x8370D990
 G.MENU_A, G.MENU_B = 0x839E0DF8, 0x839E0FB0  -- a screen (pause menu, map ...) is up
 G.FRONT_END   = 0x827B04D4  -- 0 in play, -1 in the front end, 1 in the character creator
 G.CAMERA      = 0x827D9778  -- +80 right row, +104 forward row (3 floats each)
+G.LOOK_SPEED_X, G.LOOK_SPEED_Y = 0x827D9778 + 312, 0x827D9778 + 316  -- floats: Options > Controls look sensitivity (1 = normal)
 
 G.HUD_MESSAGE   = 0x82367568  -- (UTF-16 text*, f1 = seconds): the script function message()
 G.LUA_STATE     = 0x8370F8C4  -- the game's own lua_State* (Lua 5.0)

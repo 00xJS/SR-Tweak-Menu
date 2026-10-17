@@ -241,6 +241,13 @@ wml.hook(G.UPDATE, function(ctx)
   F.update(ctx)
   WAYPOINT.enabled = F.on("waypoint_auto") and not WAYPOINT.standalone
   HOMIES.limit = F.enabled and F.items.homies.v or 0
+  if F.camera_turn_start and F.camera_turn_start > 0 and G.player() ~= 0 then
+    local v = wml.read_f32(G.LOOK_SPEED_X)
+    if v > 0.05 and v < 10 then
+      wml.write_f32(G.LOOK_SPEED_X, F.camera_turn_start); wml.write_f32(G.LOOK_SPEED_Y, F.camera_turn_start)
+      F.camera_turn_start = nil
+    end
+  end
   ADDONS.write_flags(F.on("weapon_switch"), MENU.is_open(), FREECAM.on,
     F.items.weapon_dpad.v == 2, F.items.weapon_tap.v == 2)
   -- The free camera last, after everything that moves the game's camera.
@@ -357,7 +364,9 @@ do
   local function quiet() return MENU.is_open() end
   local function aim(n) return function() return F.enabled and F.items.aim_style.v == n and not FREECAM.on end end
   F.addon.precise = ADDONS.load("Precise Aim", dir .. "/precise_aim", { gate = true, quiet = quiet, live = aim(2) })
-  F.addon.fine = ADDONS.load("Fine Aim", dir .. "/fine_aim", { quiet = quiet, live = aim(3) })
+  F.addon.fine = ADDONS.load("Fine Aim", dir .. "/fine_aim", { gate = "hooks", quiet = quiet, live = aim(3) })
+  F.ADDONS = ADDONS
   F.sync_aim_camera()
   F.apply_aim_button()
+  F.apply_precise_turning()
 end
