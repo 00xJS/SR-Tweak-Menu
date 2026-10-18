@@ -2335,8 +2335,7 @@ local ORDER = {
   Emotes = { "pose", "action", "scene", "stop_pose", "clear_scene", "repeat_action", "repeat_every" },
   Weapons = { "infinite_ammo", "no_reload", "fire", "harder_hits", "one_hit", "rocket_ammo", "fire_ammo",
     "weapon_switch", "aim_style", "give_weapon", "all_weapons", "ammo_all",
-    "camera_turn", "aim_button", "weapon_dpad", "weapon_tap", "precise_turning", "precise_aim_turn",
-    "fine_aim_turn", "fine_aim_zoom", "fine_aim_spread",
+    "fine_aim_zoom", "fine_aim_spread",
     "aim_camera", "aim_zoom", "aim_fov", "aim_height", "aim_shoulder", "aim_reset", "aim_save" },
   Vehicles = { "veh_god", "veh_repair", "tank", "bulletproof", "never_flat", "no_fling", "car_grip", "nitro_all",
     "spawn_vehicle", "remove_vehicles", "garage", "paint", "paint2", "boom", "max_speed" },
@@ -2344,7 +2343,24 @@ local ORDER = {
     "crowd_small", "crowd_big", "remove_people" },
   Visual = { "hide_hud", "letterbox", "free_cam", "freeze_world", "wireframe", "filter", "cam_mode", "saturation" },
   Teleport = { "places", "waypoint_go", "waypoint_auto" },
+  Settings = { "master", "status", "camera_turn", "aim_button", "precise_turning", "precise_aim_turn",
+    "fine_aim_turn", "weapon_dpad", "weapon_tap" },
 }
+-- Control preferences, set once, live in Settings rather than with the cheats.
+local MOVE_TO = { camera_turn = "Settings", aim_button = "Settings", precise_turning = "Settings",
+  precise_aim_turn = "Settings", fine_aim_turn = "Settings", weapon_dpad = "Settings", weapon_tap = "Settings" }
+do
+  local by_name = {}
+  for _, cat in ipairs(F.categories) do by_name[cat.name] = cat end
+  for _, cat in ipairs(F.categories) do
+    for i = #cat.items, 1, -1 do
+      local to = MOVE_TO[cat.items[i].id]
+      if to and to ~= cat.name and by_name[to] then
+        table.insert(by_name[to].items, table.remove(cat.items, i))
+      end
+    end
+  end
+end
 for _, cat in ipairs(F.categories) do
   local want = ORDER[cat.name]
   if want then

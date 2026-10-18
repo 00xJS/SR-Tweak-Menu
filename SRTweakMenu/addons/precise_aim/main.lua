@@ -1744,7 +1744,7 @@ wml.log("Precise Aim 1.0 ready")
 -- ---------------------------------------------------------------- SR Tweak Menu
 -- Added for SR Tweak Menu (not part of Precise Aim). The menu switches the mod on
 -- and off: while off, every hook here runs only the game's code (addons.lua), and
--- release() first puts back what the mod changes in the game. The menu's Aim tab
+-- release() first puts back what the mod changes in the game. The menu's aim rows
 -- tunes the camera through the functions below instead of the tuning keys.
 if type(wml.srtm) == "table" then
   local M = wml.srtm

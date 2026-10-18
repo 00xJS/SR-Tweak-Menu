@@ -422,7 +422,7 @@ wml.key_down("SHIFT")
 
 wml.on_frame(function()
     frame = frame + 1
-    -- SR Tweak Menu: the menu's Aim tab switches Fine Aim on and off.
+    -- SR Tweak Menu: the menu's Aim style row (Weapons tab) switches Fine Aim on and off.
     local switched
     if type(wml.srtm) == "table" then
         switched = wml.srtm.live() ~= enabled

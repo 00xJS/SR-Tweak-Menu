@@ -1085,12 +1085,16 @@ do
   F.items.aim_button.v = 2; F.apply_aim_button(); assert(M.toggle() == true, "toggle")
   F.items.aim_button.v = 1; F.apply_aim_button(); assert(M.toggle() == own, "own setting")
   -- The aim rows are in the Weapons tab (no Aim tab), with the turning rows.
-  local tabs, in_weapons = {}, {}
+  local tabs, in_tab = {}, {}
   for _, cat in ipairs(F.categories) do
     tabs[cat.name] = true
-    if cat.name == "Weapons" then for _, it in ipairs(cat.items) do in_weapons[it.id] = true end end
+    for _, it in ipairs(cat.items) do in_tab[it.id] = cat.name end
   end
-  assert(not tabs.Aim and in_weapons.aim_style and in_weapons.aim_camera and in_weapons.camera_turn and in_weapons.fine_aim_turn, "aim rows not in Weapons")
+  assert(not tabs.Aim and in_tab.aim_style == "Weapons" and in_tab.aim_camera == "Weapons" and in_tab.fine_aim_zoom == "Weapons",
+    "aim rows not in Weapons")
+  for _, id in ipairs({ "camera_turn", "aim_button", "precise_turning", "precise_aim_turn", "fine_aim_turn", "weapon_dpad", "weapon_tap" }) do
+    assert(in_tab[id] == "Settings", id .. " should be in Settings, is in " .. tostring(in_tab[id]))
+  end
   -- Camera turn speed writes the game's look sensitivity (both axes).
   write_f32(0x827D9778 + 312, 1.0); write_f32(0x827D9778 + 316, 1.0)
   F.items.camera_turn.v = 1.0
