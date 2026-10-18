@@ -2322,4 +2322,41 @@ function F.status_line()
   return (F.enabled and "On: " or "Tweaks OFF. Would be on: ") .. (#parts > 0 and table.concat(parts, ", ") or "nothing")
 end
 
+-- ---------------------------------------------------------------- row order
+--
+-- In each tab the switches people reach for come first; the sliders, choices
+-- and set-up rows follow. Rows missing here keep their place after these.
+local ORDER = {
+  Player = { "god", "heal", "never_wanted", "max_wanted", "no_cops", "no_gangs", "no_bust", "no_ragdoll",
+    "perfect_aim", "sprint", "run", "jump", "landing", "quick_crouch", "money", "respect",
+    "bodyguard", "bodyguard_squad", "dismiss_homies",
+    "health_mult", "wanted_police", "wanted_carnales", "wanted_vk", "wanted_rollerz", "homies",
+    "run_speed", "jump_boost", "jump_height", "swim_speed", "fall_damage" },
+  Emotes = { "pose", "action", "scene", "stop_pose", "clear_scene", "repeat_action", "repeat_every" },
+  Weapons = { "infinite_ammo", "no_reload", "fire", "harder_hits", "one_hit", "rocket_ammo", "fire_ammo",
+    "weapon_switch", "aim_style", "give_weapon", "all_weapons", "ammo_all",
+    "camera_turn", "aim_button", "weapon_dpad", "weapon_tap", "precise_turning", "precise_aim_turn",
+    "fine_aim_turn", "fine_aim_zoom", "fine_aim_spread",
+    "aim_camera", "aim_zoom", "aim_fov", "aim_height", "aim_shoulder", "aim_reset", "aim_save" },
+  Vehicles = { "veh_god", "veh_repair", "tank", "bulletproof", "never_flat", "no_fling", "car_grip", "nitro_all",
+    "spawn_vehicle", "remove_vehicles", "garage", "paint", "paint2", "boom", "max_speed" },
+  World = { "clear", "restore_traffic", "drop", "everybody", "spawn_person", "crowd_small", "crowd_big",
+    "remove_people", "freeze_clock", "weather", "hour" },
+  Visual = { "hide_hud", "letterbox", "free_cam", "freeze_world", "wireframe", "filter", "cam_mode", "saturation" },
+  Teleport = { "places", "waypoint_go", "waypoint_auto" },
+}
+for _, cat in ipairs(F.categories) do
+  local want = ORDER[cat.name]
+  if want then
+    local rank = {}
+    for k, id in ipairs(want) do rank[id] = k end
+    local rest = {}
+    for i, it in ipairs(cat.items) do rest[it] = i end
+    table.sort(cat.items, function(a, b)
+      local ra, rb = rank[a.id] or (1000 + rest[a]), rank[b.id] or (1000 + rest[b])
+      return ra < rb
+    end)
+  end
+end
+
 return F
