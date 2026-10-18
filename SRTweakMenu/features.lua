@@ -2340,8 +2340,8 @@ local ORDER = {
     "aim_camera", "aim_zoom", "aim_fov", "aim_height", "aim_shoulder", "aim_reset", "aim_save" },
   Vehicles = { "veh_god", "veh_repair", "tank", "bulletproof", "never_flat", "no_fling", "car_grip", "nitro_all",
     "spawn_vehicle", "remove_vehicles", "garage", "paint", "paint2", "boom", "max_speed" },
-  World = { "clear", "restore_traffic", "drop", "everybody", "spawn_person", "crowd_small", "crowd_big",
-    "remove_people", "freeze_clock", "weather", "hour" },
+  World = { "weather", "hour", "freeze_clock", "clear", "restore_traffic", "drop", "everybody", "spawn_person",
+    "crowd_small", "crowd_big", "remove_people" },
   Visual = { "hide_hud", "letterbox", "free_cam", "freeze_world", "wireframe", "filter", "cam_mode", "saturation" },
   Teleport = { "places", "waypoint_go", "waypoint_auto" },
 }
