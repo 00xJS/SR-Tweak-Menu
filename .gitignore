@@ -13,3 +13,16 @@ SRTweakMenu/addons/precise_aim/pool_backup.txt
 # local research only, never part of the release
 research/
 __pycache__/
+# files the menu writes while you play (itsMJQ's Models / Customize / Movement)
+SRTweakMenu/expression.txt
+SRTweakMenu/model_voice.txt
+SRTweakMenu/movement.txt
+SRTweakMenu/player_model.txt
+SRTweakMenu/player_outfit.txt
+SRTweakMenu/player_outfit_last.txt
+SRTweakMenu/player_voice.txt
+SRTweakMenu/saved_looks.txt
+# made from the game's HUD sheets: game data, never in the repository
+SRTweakMenu/hud_images.bin
+# the copy of itsMJQ's version this was merged from
+MJQ-Version/

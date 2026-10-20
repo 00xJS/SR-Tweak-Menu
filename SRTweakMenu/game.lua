@@ -32,7 +32,8 @@ G.TAKE_DAMAGE   = 0x824470D0  -- (victim, attacker, ..., f1 = damage); every dam
 -- Player object fields.
 G.P = {
   POS = 20, TYPE = 72, DIRTY = 212, FLAGS = 216, NAV_NODE = 392, FALL_START = 404,
-  CONTROLLER = 476, STATE = 508, HEALTH_MAX = 1908, HEALTH = 1912, CASH = 2320, INVENTORY = 2324,
+  PLAYER_MARK = 224,   -- 1 on the player (SAY_LINE then skips the talking face animation)
+  CONTROLLER = 476, STATE = 508, HEALTH_MAX = 1908, HEALTH = 1912, DAMAGE_FACTOR = 2068, CASH = 2320, INVENTORY = 2324,
   VEHICLE = 2496, VEHICLE_BYTE = 2569, NOT_DRIVING = 3456, EQUIPPED = 3548,
   RESPECT = 3848, RESPECT_BAR = 3860, NOTORIETY = 3868,
 }
@@ -84,6 +85,7 @@ G.TEAM_LOOKUP    = 0x8244A6A8  -- (team name) -> team id; human+232 = team ("Pla
 G.WEAPON_ITEM    = 0x823F7840  -- (weapon name) -> the inventory record a weapon is added with
 G.INV_ADD        = 0x82445C80  -- (human, record, count) -> inventory item
 G.INV_ADD_AMMO   = 0x82445B88  -- (human, item, reserve, magazine)
+G.PLAYER_EQUIP   = 0x82481300  -- (player, inventory item or 0, 0); no scripted holster lock
 G.NPC_EQUIP      = 0x82446280  -- (human, item): an NPC takes the item in hand
 G.PARTY_ADD      = 0x82483828  -- (player, npc, forced) -> added? (sets the follower up)
 G.HUD_SLOT       = 0x822D0188  -- (npc) -> HUD head slot or -1
@@ -144,14 +146,201 @@ G.ANIM_STATE       = 952
 -- calls behind the script functions play_action_do and
 -- play_custom_action_do, without the script engine).
 G.ACTION_INDEX     = 0x82229380  -- (action name) -> number (anim_actions), or -1
-G.ACTION_PLAY      = 0x82444F88  -- (human, action, 0, 0, 0, 0, 0, -1, f1 0, f2 1, f3 -1) -> played?
+G.ACTION_PLAY      = 0x82444F88  -- (human, action, flags, replace, 0, 0, 0, -1, f1 0, f2 1, f3 -1) -> played?
 G.ANIM_OWNER       = 568         -- human+568: animation owner; owner+3592 = its player handle
 G.ANIM_STOP        = 0x826F5BC0  -- (player handle)
 G.ANIM_RESET       = 0x826F5B88  -- (player handle, 0)
+G.ANIM_FILE_INFO   = 0x826F8658  -- (file id) -> record; +24 nonzero when paged in
+G.ANIM_TRACK_DONE  = 0x826F63D0  -- (animation player, track handle) -> remaining time is zero
 G.ANIM_FILE_ID     = 0x826F6BA8  -- ("name.anim") -> animation id, or -1 when not loaded
 G.ANIM_PLAY_FILE   = 0x826F5C20  -- (player handle, id, 16, -, -, -, -, -1, f1 0, f2 1, f3 1, f4 -1) -> handle
 G.ANIM_SLOT_FOR    = 0x82226DA8  -- (owner+4, owner+0, n): what the custom-action path stores at human+592
 G.CUSTOM_STATE     = 297         -- human+756 while a custom animation plays
+
+-- Animation sets (anim_set_filenames.xtbl). The game keeps them in a table
+-- of 12-byte entries: +0 name, +4 parent name, +8 parent entry (0 = none).
+-- A person's body instance (human+568) holds the set it animates with at
+-- +4 and its weapon group at +0; every state and action is looked up as
+-- (set, group, state) by 0x82226DA8, which searches the set and its
+-- parents in the group, then the same in each parent group. States are
+-- numbered as anim_states.xtbl (0..226), actions follow at 227+.
+G.ANIM_SET_FIND   = 0x82229278   -- (name) -> set entry, 0 if unknown (names compare without case)
+G.ANIM_SETS       = 0x82C06D58
+G.ANIM_LOOKUP     = 0x82226DA8   -- (set entry, group, state) -> animation, or -1
+G.ANIM_GROUPS     = 0x82BC5BD8   -- 22 groups of 2608 bytes: +0 parent group*, +4 u8 count per state, +872 u16 first per state
+G.ANIM_GROUP_SIZE = 2608
+G.ANIM_POOL_SET   = 0x82BBDBD8   -- u32 set index per pool slot
+G.ANIM_POOL_ANIM  = 0x82BC1BD8   -- u32 animation per pool slot
+G.OWNER_GROUP, G.OWNER_SET, G.OWNER_VARIANT, G.OWNER_ANIM_PLAYER = 0, 4, 3720, 3592
+-- The body's mesh: +3740 is 1 when +3736 holds it. Its variant comes from
+-- +3720 when that isn't -1 (else rolled), and every roll of its parts is
+-- read from a replay list instead while 0x8370DC0C is set (0x82C079F0:
+-- +0 how far along, +4 the bytes).
+G.OWNER_MESH, G.OWNER_MESH_KIND = 3736, 3740
+G.REPLAY_ON, G.REPLAY = 0x8370DC0C, 0x82C079F0
+-- 0x8222F7F8(mesh, variation record, ...) rolls a variation's part and material groups.
+G.VARIANT_ROLL = 0x8222F7F8
+-- Stores and wardrobes: a trigger by name (0x82637B58 hashes the name,
+-- 0x824EC080 finds the trigger), the game's trigger handler (trigger, you,
+-- 1) opens its screen, 0x82494208 says whether a store screen is open.
+G.NAME_HASH, G.TRIGGER_FIND, G.TRIGGER_USE, G.STORE_OPEN = 0x82637B58, 0x824EC080, 0x824E9120, 0x82494208
+-- Your wardrobe: { item, variant } pairs at player+4488, how many at +20872.
+G.ITEM_FIND, G.OWNED, G.OWNED_COUNT, G.OWNED_MAX = 0x82318070, 4488, 20872, 2048
+-- Wearing: an item's wear option and variant by name, then on your record.
+G.WEAR_OPTION_FIND, G.VARIANT_FIND, G.WEAR_ITEM = 0x823180D8, 0x82318158, 0x823182A8
+-- Face and body sliders: the creator's table (36-byte entries, the slider
+-- index at +24), how many at 0x83117BB8.
+G.MORPHS, G.MORPH_COUNT = 0x831169B8, 0x83117BB8
+-- Hair colours: the list (pointer, count), kept per hair slot (counts, entries),
+-- kept with 0x82321E88(record, slot, colour), put on with 0x823220D0(same).
+G.HAIR_COLOURS = 0x8370E804
+G.HAIR_KEPT_COUNT, G.HAIR_KEPT = 0x8304D160, 0x8304D190
+G.HAIR_COLOUR_KEEP, G.HAIR_COLOUR_PUT = 0x82321E88, 0x823220D0
+G.HUMAN_STATE_NOW, G.HUMAN_ANIM_NOW = 576, 592  -- the state playing and the animation cached for it
+
+-- A person's model (human+228 = definition: +8 name, +16 model file,
+-- +20 animation set name, +32 loaded rig, +608 stream id). The game's own
+-- way of taking a body out of the world and putting it back (what
+-- teleport_do and the streamer do for people whose area isn't loaded):
+-- deactivate each set bit of human+200 (bit 0 detaches the mesh), then
+-- activate, which attaches the model of the current definition (it must be
+-- resident) and rebuilds the hand, foot and IK bones from its rig.
+-- These are the base person versions. The wrappers the streamer uses for
+-- NPCs (0x8247A8E0 / 0x8247A6D0) also link the person into NPC lists at
+-- +3592/+3596, which on the player are control flags: used on the player
+-- they locked the controls and updated the body twice per frame.
+G.HUMAN_DEACTIVATE  = 0x8244BCE8  -- (human, bit, 0)
+G.HUMAN_ACTIVATE    = 0x8244B268  -- (human, 0, 0, 0, 0)
+G.PERSONA_NOW       = 3552        -- voice persona (a name string); activating picks one only for characters with variant tables
+-- Animation simulations (anim_simulation.xtbl: hair, ponytails, coats,
+-- chains). A body instance lists its character's at +3688 (count) / +3692;
+-- the game's simulation manager (0x8212F6C0) runs those for NPCs, but for a
+-- player it runs the list at player+20876 (count +20924, at most 12), which
+-- the outfit fills. Without them a swapped model's hair or coat bones are
+-- left undriven and those vertices stretch away.
+G.OWNER_SIM_COUNT, G.OWNER_SIMS = 3688, 3692
+G.PLAYER_SIMS, G.PLAYER_SIM_COUNT, G.PLAYER_SIM_MAX = 20876, 20924, 12
+G.PLAYER_FLAGS      = 3592        -- 8 bytes of player state flags (+3593 bit 0x10 = controls locked)
+G.HUMAN_ACTIVE      = 200
+G.HUMAN_PLACE       = 0x8243E6F8  -- (human, pos*, 0, nav node or -1): puts the body (and its physics) at pos
+G.MODEL_RESIDENT_TABLE = 0x82C06F68  -- 24 loaded character models of 112 bytes; stream id at +108
+G.MODEL_LOAD_NOW    = 0x8250F160  -- (stream id, 5, 0): load it now (the co-op mod's own-body loader)
+G.MODEL_RESIDENT    = 0x8250F3C8  -- (stream id) -> loaded? (low byte)
+G.RIG_BONE          = 0x826F5A68  -- (rig, bone name) -> bone index
+G.D = { NAME = 8, MODEL = 16, ANIM_SET = 20, RIG = 32, PERSONA_COUNT = 136, PERSONAS = 140, STREAM_ID = 608 }  -- personas: name strings (SP_JULIUS ...)
+-- The player's own look-at bones, set from the rig when the player is made
+-- (0x8247BA28): neck, both upper-arm twists and both feet.
+G.PLAYER_BONES = { { 3664, "neck" }, { 3668, "l-upperarmtwist1" }, { 3672, "r-upperarmtwist1" }, { 3676, "L-Foot" }, { 3680, "R-Foot" } }
+-- The body's collision: controller (human+476) +16 = physics entity, whose
+-- collision layer word is at +56; 0x8244BFA8 picks the layer and hands the
+-- entity to 0x826CA870(world, entity, 1). Deactivating moves the player to
+-- the "inactive" layer and activating doesn't always move them back.
+G.CONTROLLER_ENTITY, G.ENTITY_LAYER = 16, 56
+G.COLLISION_UPDATE, G.COLLISION_WORLD = 0x826CA870, 0x8370DC88
+
+-- The player's clothes are separate pieces worn through the customization
+-- record (player+4484, +8 = slot): they're drawn on whatever skeleton the
+-- body has, so a swapped model wears them twisted. The co-op mod's calls:
+G.CUSTOM          = 4484
+G.OUTFIT_PACK     = 0x8248DCA8  -- (writer {u32 length, u32 buffer*}, record): count byte + 4 bytes per worn item
+G.OUTFIT_WEAR     = 0x8248DE28  -- (record, reader {u32 length, u32 buffer*}, cursor*, 0)
+G.OUTFIT_REMOVE   = 0x8248D340  -- (record): takes everything off
+G.CLOTHING_FINISH = 0x8248CFC8  -- (): works through the clothing queue (loads, takes off)
+G.OUTFIT_REMOVE_ONE = 0x8248D198  -- (record, item)
+G.WORN_COUNT      = 0x83036140 + 13056  -- + slot*4
+-- The worn table: 20-byte entries at 0x83039470 + slot*1080 (part, record,
+-- wear option, variant, item; the item's +32 is the slot it fills, 0 to 4
+-- for hair, beard, mustache, sideburns, eyebrows). WORN_LIST is the items'.
+G.WORN_TABLE      = 0x83039470
+G.WORN_LIST       = 0x83039480
+G.WORN_REMOVE_AT  = 0x823183C8  -- (record, index, 1 = more to come / 0 = rebuild): off the table and the record
+G.WORN_REMOVE_SLOT = 0x82318498 -- (record, slot, same): everything in a slot
+-- The slider bake: every update, each customization record whose sliders
+-- changed is baked into its body's model (record +16 = body instance).
+G.SLIDER_BAKE = 0x824904B0
+
+-- Homie heads on the HUD: human+4220 caches the head bitmap (-1 = look it
+-- up again). The lookup (0x822DE800) goes by the voice persona at
+-- human+3552 through follower_heads.xtbl; with no persona there is no
+-- head, and an unknown one shows the first table entry. 0x827AF20C is the
+-- HUD's own Saints fleur-de-lis (hud_health_ico_saints) once the HUD loaded.
+G.HUD_HEAD, G.PERSONA = 4220, 3552
+G.SAINTS_ICON = 0x827AF20C        -- the small one in the health ring (fallback)
+-- The gang logos the HUD loads once (act_ico_saints / lc / vk / wr: name,
+-- then bitmap handle): the Saints one is the size of a homie's head.
+G.GANG_ICONS = 0x827AF0D0
+G.SAINTS_LOGO = G.GANG_ICONS + 4
+
+-- Notoriety on the HUD. 0x82481990(player, 1) picks the gang to show (it
+-- only looks at Los Carnales, Vice Kings and Rollerz) as a "type"; 0x822EA408
+-- (player, slot) draws one meter, with the icon at 0x83023660 + index*4
+-- (slot 0 -> 5, slot 2 -> 6, others -> 4). Notoriety slots: 0 Los Carnales,
+-- 1 Vice Kings, 2 Rollerz, 3 Saints, 4 police (24 bytes each at player+3868).
+G.NOTORIETY_PICK = 0x82481990
+G.NOTORIETY_METER = 0x822EA408
+G.NOTORIETY_ICONS = 0x83023660
+G.DRAW_COLOR = 0x8263E7D8         -- (r, g, b, a): colour of the next HUD drawing
+G.D.TEAM = 108                    -- definition: the team people made from it are on
+
+-- The music player. 0x826595E0 is the game's call that hands the player a
+-- playlist (XMPCreateTitlePlaylist): r4 = songs (36 bytes each, +0 = the
+-- UTF-16 file path), r5 = how many. Every playlist and every preview goes
+-- through it.
+G.MUSIC_PLAYLIST = 0x826595E0
+-- The music store's songs: genres of 12 bytes at *0x83032FDC (+4 songs,
+-- +8 how many), how many at 0x83032FD8; a song is 44 bytes, +24 its state:
+-- 0 locked, 1 in the store, 2 yours (the game's own unlock-all, 0x822FA3D8,
+-- sets every song to 2).
+G.MUSIC_GENRES, G.MUSIC_GENRE_COUNT = 0x83032FDC, 0x83032FD8
+-- The 60 hidden CDs: how many you have at player+21228; every 10 unlock a
+-- bonus song (cd_collectible1..6) through 0x82226738(name hash); the "CDs
+-- found" statistic is stat 31, added to by 0x82221660(31, &amount).
+G.P_CDS, G.CD_MAX = 21228, 60
+-- The local player's sprint meter, as the HUD shows it: the value at
+-- 0x8370E3F8, kept between 0x8370E3F0 and 0x8370E3F4 (empty and full) every
+-- update by the sprint code (0x8247D3B0 / 0x82484F68, from its timer at
+-- 0x82832B40), refill included. (0x8309ABC4 only changes as you start or
+-- stop sprinting.)
+G.SPRINT_METER, G.SPRINT_METER_MAX = 0x8370E3F8, 0x8370E3F4
+G.UNLOCK, G.UNLOCK_HASH, G.STAT_ADD, G.STAT_CDS = 0x82226738, 0x82637C18, 0x82221660, 31
+G.DAMAGE_SEQUENCE = 0x827D5FB0     -- not -1 while the game holds all damage back
+G.SAY_LINE = 0x82219298            -- (human, situation, -1, -1, ...): a person says a persona line
+G.PLAY_LINE = 0x8221AC00           -- (human, situation, f1 chance ...): picks a line for the situation, then SAY_LINE
+
+-- HUD pictures by name (bitmap_sheets.xtbl), as the HUD itself looks them
+-- up: 0x82643430(table, name) -> handle (16-bit, -1 if unknown).
+G.BITMAP_FIND, G.BITMAP_TABLE = 0x82643430, 0x82816484
+-- The HUD's follower list: slots of 888 bytes from 0x83018D18, the
+-- follower's handle at +188; how many at 0x8370E240.
+G.FOLLOWER_SLOTS, G.FOLLOWER_SLOT_SIZE, G.FOLLOWER_COUNT = 0x83018D18, 888, 0x8370E240
+
+-- Minimap people (0x822E8D00 draws them, each with its position = person+20):
+-- Saints through 0x822E8C78 (purple dot), other gangs through 0x822E8BF0
+-- (red dot). Dot pictures at 0x83027258: +8 blue (cars), +12 red, +16 purple.
+G.DOT_GANG, G.DOT_SAINT = 0x822E8BF0, 0x822E8C78
+G.DOT_IMAGES = 0x83027258
+-- Followers on the minimap (0x822E8FE8): each a white arrow (map_blip,
+-- handle at 0x83023684) tinted by 0x8213D988(f1 r, f2 g, f3 b, f4 a) with
+-- (160, 0, 255) - Saints purple - and drawn by 0x8227E720(handle, f1 x,
+-- f2 y, f3 turn, f4 size, r8 clip). The follower is in r31 (person+20) at
+-- the tint.
+G.FOLLOWER_ARROWS, G.ARROW_TINT, G.DRAW_BITMAP, G.ARROW_IMAGE = 0x822E8FE8, 0x8213D988, 0x8227E720, 0x83023684
+
+-- Animation players (0x826F0BC0: handle -> 0x8283E7D0 + (handle % 77) * 8028):
+-- +3072 one 48-byte pose per slot (3x3 turn, then position at +36) in the
+-- model's space, +7152 the rig, +7156 the slot map (+4 slots, +12 + 2*slot
+-- bone, +140 + 2*bone slot). 0x826F1F78(player, locals) turns the
+-- animation's local poses (48 bytes per slot, parent-relative) into those,
+-- slot by slot down the skeleton (0x826F1E30 is the reverse).
+-- Rigs: +32 flags (bit 4: 36-byte bones, else 32), +36 bones, +40 first
+-- loose bone (hair, sleeves, hood, lapels, coat panels - 41), +44 how many
+-- (23), +56 bones: +0 name, +16 rest offset from the parent, +28 parent.
+-- Every rig's rest pose is unturned, so a bone held at rest relative to its
+-- parent is (no turn, rest offset). Cloth sims set their bones after
+-- (0x826F5EE0), so the ones a sim runs still move.
+G.ANIM_PLAYERS, G.ANIM_PLAYER_SIZE, G.ANIM_PLAYER_COUNT = 0x8283E7D0, 8028, 77
+G.POSE_BUILD = 0x826F1F78
+G.TEAM_ID = { Playas = 0, ["Vice Lords"] = 1, ["Los Carnales"] = 2, Rollerz = 3, Police = 6, Civilian = 7, ["Neutral Gang"] = 8 }
 
 -- Vehicles made in the world (the co-op mod creates cars this way).
 G.VEHICLE_CREATE = 0x82569700  -- (3, 2, info index, pos*, rows*, 0, 0, 0, f1 = 0) + stack {+84 u32 0, +95 u8 0, +100 u32 0} -> handle

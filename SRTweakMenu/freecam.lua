@@ -113,7 +113,8 @@ end
 
 function FC.enter(ctx)
   if FC.on then return true end
-  if G.player() == 0 or G.in_front_end() or G.in_cutscene() or G.screen_up() then return false end
+  -- (cutscenes too: the free camera goes on top of the cutscene's own)
+  if G.player() == 0 or G.in_front_end() or G.screen_up() then return false end
   FC.saved = { pos = get(CAM + 44), r = get(CAM + 80), u = get(CAM + 92), f = get(CAM + 104),
                fov = read_f32(CAM + 188), wfov = read_f32(CAM + 192) }
   FC.pos = get(CAM + 44)
@@ -147,6 +148,107 @@ function FC.exit(ctx)
   pcall(wml.mouse_look)
 end
 
+-- ---------------------------------------------------------------- orbit
+--
+-- The fitting-room camera of the Customize and Emotes tabs, like the game's own
+-- character creation: in front of the character you're dressing, looking at
+-- them, with them on the right of the screen so the menu on the left doesn't
+-- cover them; the right stick / mouse turns it round them and moves it from
+-- their feet to their face, the triggers (or Z / X) zoom in and out, and the
+-- left stick (or the mouse with the left button held) slides the view to
+-- wherever you want it. Uses the same free camera mode; never while the free
+-- camera itself is on.
+FC.ORBIT = { dist = 2.4, height = 1.0, min_dist = 0.6, max_dist = 4.5, aside = 0.38, pan_max = 2.5 }
+-- opts (for a car): { target = object, dist, height, min, max }.
+function FC.orbit(ctx, on, facing, opts)
+  if on and FC.orbiting and (opts and opts.target) ~= (FC.orbit_opts and FC.orbit_opts.target) then
+    -- Another subject (you, then your car): start again in front of it.
+    FC.orbit_opts = opts
+    FC.orbit_yaw = facing or 0
+    FC.orbit_dist = opts and opts.dist or FC.ORBIT.dist
+    FC.orbit_h = opts and opts.height or FC.ORBIT.height
+    return true
+  end
+  if on == (FC.orbiting == true) then return FC.orbiting end
+  if on then
+    if FC.on or G.player() == 0 or G.in_cutscene() or G.screen_up() then return false end
+    FC.saved = { pos = get(CAM + 44), r = get(CAM + 80), u = get(CAM + 92), f = get(CAM + 104),
+                 fov = read_f32(CAM + 188), wfov = read_f32(CAM + 192) }
+    G.call(ctx, PUSH, { MODE_FREE })
+    -- In front of them, looking at their face.
+    FC.orbit_yaw = facing or 0
+    FC.orbit_opts = opts
+    FC.orbit_dist = opts and opts.dist or FC.ORBIT.dist
+    FC.orbit_h = opts and opts.height or FC.ORBIT.height
+    FC.pan_x, FC.pan_y = FC.pan_x or 0, FC.pan_y or 0     -- where you slid it last time stays
+    pcall(wml.mouse_look)
+    FC.clock = os.clock()
+    FC.orbiting = true
+  else
+    FC.orbiting = false
+    if mode_in_stack() then
+      put(CAM + 44, FC.saved.pos); put(CAM + 56, FC.saved.pos)
+      put(CAM + 80, FC.saved.r); put(CAM + 92, FC.saved.u); put(CAM + 104, FC.saved.f)
+      put(CAM + 116, FC.saved.r); put(CAM + 128, FC.saved.u); put(CAM + 140, FC.saved.f)
+      G.call(ctx, POP, { MODE_FREE })
+    end
+    write_f32(CAM + 192, FC.saved.wfov); write_f32(CAM + 188, FC.saved.fov)
+    pcall(wml.mouse_look)
+  end
+  return FC.orbiting
+end
+
+local function update_orbit(ctx)
+  local p = G.player()
+  if p == 0 or G.in_front_end() or G.in_cutscene() or G.screen_up() or read_u32(CAM) ~= MODE_FREE then
+    FC.orbit(ctx, false)
+    return false
+  end
+  local now = os.clock()
+  local dt = math.max(0, math.min(0.05, now - FC.clock))
+  FC.clock = now
+  local o = FC.ORBIT
+  local function key(k) local okk, d = pcall(wml.key_down, k) return okk and d end
+  local ok, dyaw, dpitch = pcall(wml.mouse_look)
+  dyaw, dpitch = ok and dyaw or 0, ok and dpitch or 0
+  if key(1) then
+    -- Left button held: the mouse slides the view instead of turning it.
+    -- (dragging moves the picture with the mouse, like grabbing it)
+    FC.pan_x = FC.pan_x - dyaw * 2.5
+    FC.pan_y = FC.pan_y - dpitch * 2.5
+  else
+    FC.orbit_yaw = FC.orbit_yaw + dyaw * 1.5
+    FC.orbit_h = math.max(0.15, math.min(1.85, FC.orbit_h + dpitch * 1.2))
+  end
+  -- The left stick slides it too.
+  local function axis(v) v = v / 32767 return math.abs(v) < 0.24 and 0 or v end
+  FC.pan_x = FC.pan_x + axis(FC.pad.lx) * 1.5 * dt
+  FC.pan_y = FC.pan_y + axis(FC.pad.ly) * 1.5 * dt
+  FC.pan_x = math.max(-o.pan_max, math.min(o.pan_max, FC.pan_x))
+  FC.pan_y = math.max(-o.pan_max, math.min(o.pan_max, FC.pan_y))
+  local zoom = FC.pad.lt / 255 - FC.pad.rt / 255 + ((key("Z") and 1 or 0) - (key("X") and 1 or 0))
+  local O = FC.orbit_opts
+  FC.orbit_dist = math.max(O and O.min or o.min_dist, math.min(O and O.max or o.max_dist, FC.orbit_dist + zoom * 2.5 * dt))
+  local subject = O and O.target or p
+  if not G.pointer_ok(subject) then subject = p end
+  local px, py, pz = G.vec(subject + G.P.POS)
+  local target = { px, py + FC.orbit_h, pz }
+  local sy, cy = math.sin(FC.orbit_yaw), math.cos(FC.orbit_yaw)
+  -- A little above the point looked at, more the further back.
+  local lift = 0.1 + FC.orbit_dist * 0.08
+  local pos = { target[1] + sy * FC.orbit_dist, target[2] + lift, target[3] + cy * FC.orbit_dist }
+  local dx, dy, dz = target[1] - pos[1], target[2] - pos[2], target[3] - pos[3]
+  local yaw = math.atan(dx, dz)
+  local pitch = math.atan(dy, math.sqrt(dx * dx + dz * dz))
+  local r, u, f = rows(yaw, pitch)
+  -- Slid sideways (you on the right of the screen) and wherever you moved it.
+  local side = o.aside * FC.orbit_dist - FC.pan_x
+  for i = 1, 3 do pos[i] = pos[i] - r[i] * side + u[i] * FC.pan_y end
+  put_pose(pos, r, u, f)
+  write_f32(CAM + 192, 50); write_f32(CAM + 188, 50)
+  return true
+end
+
 -- The controller hook hands the pad over before blanking it. Returns true
 -- when the game should see no input (the camera is flying).
 function FC.capture(state)
@@ -160,9 +262,10 @@ end
 -- At the end of the game update. `paused` = the menu is open (the camera
 -- holds still while you use the menu). Returns false if it had to stop.
 function FC.update(ctx, paused)
+  if FC.orbiting then update_orbit(ctx) return true end
   if not FC.on then return true end
   local p = G.player()
-  if p == 0 or G.in_front_end() or G.in_cutscene() or G.screen_up() or read_u32(CAM) ~= MODE_FREE then
+  if p == 0 or G.in_front_end() or G.screen_up() or read_u32(CAM) ~= MODE_FREE then
     FC.exit(ctx)
     return false
   end

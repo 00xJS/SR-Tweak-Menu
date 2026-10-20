@@ -11,37 +11,45 @@ An in-game cheat menu for Saints Reborn
    - **Windows:** `dist\mods\` inside your Saints Reborn folder
    - **Mac:** `~/SaintsReborn/dist/mods/`
 3. Start Whompay's Mod Loader, tick **SR Tweak Menu** and press **Play**.
+   The first time, restart the game once so it loads the menu's player
+   animation set (used by Movement styles).
 4. In game, open the menu:
    - **Keyboard:** F5
-   - **Xbox controller:** hold RB, press D-pad Down
-   - **PlayStation controller:** hold R1, press D-pad Down
+   - **Xbox controller:** hold Back/View for 0.8 seconds, or hold RB and press D-pad Down
+   - **PlayStation controller:** hold Select/Share for 0.8 seconds, or hold R1 and press D-pad Down
 
 ## Controls
 
 | | Keyboard | Xbox | PlayStation |
 |---|---|---|---|
-| Open / close menu | F5 | RB + D-pad Down | R1 + D-pad Down |
+| Open / close menu | F5 | Hold Back/View, or RB + D-pad Down | Hold Select/Share, or R1 + D-pad Down |
 | Move | Up / Down | D-pad Up / Down | D-pad Up / Down |
 | Change value / browse list | Left / Right | D-pad Left / Right | D-pad Left / Right |
-| Select | Enter | A | Cross |
+| Select / open a page | Enter | A | Cross |
 | Change tab | PgUp / PgDn | LB / RB | L1 / R1 |
-| Back / close | Backspace | B | Circle |
+| Back a page / close | Backspace | B | Circle |
 | Stop a pose or repeating action | Shift + Up | RB + D-pad Up | R1 + D-pad Up |
+
+Outside the Customize tab you can still walk, drive and look around with the
+menu open. A short tap of Back still does the game's Back.
 
 ## Features
 
 | Tab | |
 |---|---|
-| Player | God mode, health multiplier, refill health, never wanted, wanted levels, max wanted, no cops, no gangs, never busted, no ragdoll, perfect aim, run and jump boosts, soft landing, quick crouch, swim speed, fall damage, infinite sprint, +$50,000, +5,000 respect, homie limit 1 to 10, dismiss homies, bodyguards |
-| Emotes | Poses, actions (once or on repeat), staged scenes (dance pairs, strip club, house party) |
-| Weapons | Infinite ammo, no reload, rapid fire, weapon switch (keys 1 to 8, mouse wheel, D-pad, move with the weapon wheel open), harder hits, one-hit kill, rocket ammo, fire ammo, give any weapon, give every weapon, refill all ammo; aim style: the game's own, Precise Aim (over-the-shoulder camera, accuracy by stance, slow walk) or Fine Aim (zoom, slower turning, tighter shots), Precise Aim's camera (6 styles plus your own, zoom, field of view, height, shoulder), Fine Aim's zoom and spread |
-| Vehicles | Vehicle god mode, repair, tank mode, bulletproof glass, no flat tyres, no explosion fling, extra car grip, nitrous in every car, extra top speed, paint, blow up, spawn any of 79 vehicles, deliver to garage |
-| World | Weather, time of day, freeze clock, clear / restore traffic, everybody drop, everybody dance or pose, spawn any of 188 people, spawn crowds |
-| Visual | Hide HUD, saturation, letterbox, filters, free camera (fly it, or leave it in place and play from that shot), freeze world, wireframe |
-| Teleport | Cribs, Saints Row church, teleport to map waypoint |
-| Settings | Master switch, show what is on, camera turn speed, aim button (hold or toggle), Precise Aim turning, turn speed while aiming (Precise Aim and Fine Aim), weapon switch D-pad and wheel tap |
+| Player | Pages: **Logic** (god mode, no clip, health multiplier, refill health, kill yourself, no ragdoll, run boost, high jump boost, game jump height, soft landing, quick crouch, swim speed, fall damage, infinite sprint, perfect aim), **Notoriety** (never wanted, Saints are enemies, police, gang and Saints notoriety, max notoriety, no cops, no gangs, never busted), **Bodyguards** (bodyguards, character homies, squad, dismiss homies, homie limit 1 to 10), **Voice Lines**; +$50,000, +5,000 respect |
+| Models | Play as any character model, live: switch, restore your Playa, reload your character; dialogue, animation fallback, cloth physics |
+| Customize | The game's character creator, free, as yourself: head, eyes, hair, body, skin, clothes, jewelry, tattoos, 10 saved looks and outfits, voice, facial expressions, movement styles (stance, walk, run, sprint, melee and throw run, combat, melee combat) |
+| Emotes | Poses and actions by the game's categories (with props), staged scenes (dance pairs, strip club, house party), repeat |
+| Weapons | Infinite ammo, no reload, rapid fire, heavy knockback, one-hit kill, rocket ammo, fire ammo, weapon switch (keys 1 to 8, mouse wheel, D-pad, move with the weapon wheel open), aim style: the game's own, Precise Aim (over-the-shoulder camera, accuracy by stance, slow walk) or Fine Aim (zoom, slower turning, tighter shots), give any weapon, give every weapon, refill all ammo, a **Precise Aim camera** page (6 styles plus your own), Fine Aim's zoom and spread (aim rows show for the aim style you pick) |
+| Vehicles | Vehicle god mode, repair, tank mode, bulletproof glass, bulletproof tires, no explosion fling, extra car grip, nitrous in every vehicle, spawn any of 79 vehicles, deliver to garage, customize vehicle (every part and colour), paint, destroy, extra top speed |
+| World | Weather, time of day, freeze time, clear / restore streets, ragdoll all NPCs, kill everyone, everybody dance or pose, spawn any of 188 people, spawn crowds |
+| Visual | Hide HUD, letterbox, free camera (fly it, or leave it in place and play from that shot, also in cutscenes), freeze world, filters, render mode (no sky, no textures, no people, people only), saturation |
+| Teleport | Cribs, every store, every activity, teleport to map waypoint |
+| Settings | Master switch, show active tweaks; **Controls** (camera turn speed, aim button hold or toggle, Precise Aim turning, turn speed while aiming, weapon switch D-pad and wheel tap, shown when Weapon switch is on); **UI+** (low health and low sprint visuals, low health sound echo); **Unlocks** (music, collectibles, clothing); **Tweak Settings** (restore outfit, customization pose, animation fallback, cloth physics) |
 
-Everything starts off. Every menu row has a help line.
+Everything starts off. Every menu row has a help line. See
+`SRTweakMenu/CHANGELOG.md` for what changed.
 
 ## Settings
 
@@ -52,6 +60,13 @@ Restart the game after changing them.
 Don't tick the standalone Precise Aim, Fine Aim or Weapon Switch mods as well:
 SR Tweak Menu already includes them.
 
+## Works with
+
+- **SaintsReborn Music Player** with its `MP3_Stocks` song copies: the next
+  song starts by itself and the music follows the pause menu's volume.
+- **HomieHeads**: HUD heads for recruited gang members and characters
+  without a head picture.
+
 ## Notes
 
 - Private play only: story co-op and private parties, not public matches.
@@ -60,6 +75,11 @@ SR Tweak Menu already includes them.
 ## Credits
 
 - Saints Reborn and its mod loader by Whompay. Saints Row by Volition.
+- **itsMJQ**: the Models and Customize tabs, movement styles, the emotes
+  pages, voice lines and voices, character homies, customize vehicle, store
+  and activity teleports, unlocks, render modes, the UI+ screen effects, the
+  music fixes, the menu's pages, hold-Back shortcut and moving with the menu
+  open, and the findings behind them (see the changelog).
 - [Precise Aim](https://github.com/Eazeepz/Precise-Aim) and
   [Weapon Switch](https://github.com/Eazeepz/Weapon-Switch) by Eazzy (Eazeepz),
   and [Fine Aim](https://github.com/car123609/SaintsReborn-Fine-Aim-Precision-Gunplay)

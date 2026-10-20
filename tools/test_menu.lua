@@ -245,41 +245,82 @@ print("---- menu after opening ----"); print(mailbox_text())
 local F = require("features")
 local G = require("game")
 
--- Toggle god mode (first row) and check the bit.
+-- Toggle god mode (Player > Logic, first row) and check the bit.
+local MENU0 = require("menu")
+press("ENTER"); update(2)                         -- opens the Logic page
+assert(#MENU0.pages == 1 and MENU0.current().id == "god", "Logic page should open on God mode")
 press("ENTER"); update(2)
 assert(F.items.god.v, "god not on")
 assert((read_u32(P + 216) & 0x00100000) ~= 0, "god bit not set")
 press("ENTER"); update(2)
 assert((read_u32(P + 216) & 0x00100000) == 0, "god bit not cleared")
+press("BACKSPACE"); update(1)
+assert(#MENU0.pages == 0 and MENU0.is_open(), "Backspace should leave the page, not the menu")
 
--- Walk every tab and every item: Left, Right, Enter must never error.
+-- Walk every tab and every row the menu shows: Left, Right, Enter must never
+-- error. Rows that open a page are opened and left again (a page's own rows
+-- are walked one level down; answering No to a "save changes?" question).
 local errors = 0
-for t = 1, #F.categories do
-  local cat = F.categories[t]
-  for i = 1, #cat.items do
-    local it = cat.items[i]
-    if it.needs == "vehicle" then put_in_vehicle(true) else put_in_vehicle(false) end
-    update(2)
-    local ok, err = pcall(function()
-      if it.kind == "list" then
-        -- Lists open a page: browse, pick (runs the item), leave the page.
-        -- Lists pick with Left/Right on the row and act on Enter.
-        local before = it.v
-        press("RIGHT")
-        if it.usable then
-          -- With only one usable entry, Right may stay on it.
-        else
-          assert(it.v == before % #it.items + 1, "Right should move to the next entry")
-        end
-        press("ENTER")
-        assert(require("menu").is_open(), "the menu stays open after picking")
-      else
-        press("RIGHT"); press("LEFT"); press("ENTER")
-        if it.kind == "toggle" and it.v and it.id ~= "master" and it.id ~= "run" and it.id ~= "jump" and it.id ~= "landing" and it.id ~= "fire" and it.id ~= "tank" then press("ENTER") end
+local MENU = require("menu")
+local function leave_page()
+  press("BACKSPACE")
+  local pg = MENU.pages[#MENU.pages]
+  if pg and pg.confirm then press("DOWN"); press("ENTER") end      -- "No"
+end
+local function try_row(where, it)
+  if it.needs == "vehicle" then put_in_vehicle(true) else put_in_vehicle(false) end
+  update(2)
+  local ok, err = pcall(function()
+    if it.kind == "header" then return end
+    if it.kind == "list" then
+      local before = it.v
+      press("RIGHT")
+      if not it.usable and #it.items > 1 then
+        assert(it.v == before % #it.items + 1, "Right should move to the next entry")
       end
-    end)
-    if not ok then errors = errors + 1; print("ERROR in " .. cat.name .. "/" .. it.id .. ": " .. tostring(err)) end
-    press("DOWN")
+      press("ENTER")
+      assert(MENU.is_open(), "the menu stays open after picking")
+    elseif it.kind == "page" then
+      -- (opened by the caller)
+    else
+      press("RIGHT"); press("LEFT"); press("ENTER")
+      if it.kind == "toggle" and it.v and it.id ~= "master" and it.id ~= "run" and it.id ~= "jump" and it.id ~= "landing" and it.id ~= "fire" and it.id ~= "tank" then press("ENTER") end
+    end
+  end)
+  if not ok then errors = errors + 1; print("ERROR in " .. where .. "/" .. tostring(it.id or it.label) .. ": " .. tostring(err)) end
+end
+local function set_cursor(i)
+  local pg = MENU.pages[#MENU.pages]
+  if pg then pg.cursor = i else MENU.cursor[MENU.tab] = i end
+  local s0 = math.max(1, i - 11)
+  if pg then pg.scroll = s0 else MENU.scroll[MENU.tab] = s0 end
+end
+local SKIP = { kill_self = true, master = true }   -- (dying, or everything off, would stop the walk)
+local seen_tabs = 0
+for _ = 1, #F.categories do
+  local cat = F.categories[MENU.tab]
+  seen_tabs = seen_tabs + 1
+  local list = MENU.view_rows()
+  for i = 1, #list do
+    local it = list[i]
+    if not SKIP[it.id] then
+      set_cursor(i)
+      if it.kind == "page" then
+        local depth = #MENU.pages
+        press("ENTER")
+        if #MENU.pages > depth then
+          local rows = MENU.view_rows()
+          for j = 1, math.min(#rows, 40) do
+            local r = rows[j]
+            if r.kind ~= "page" and not SKIP[r.id] then set_cursor(j); try_row(cat.name .. ">" .. it.label, r) end
+          end
+          while #MENU.pages > depth do leave_page() end
+        end
+      else
+        try_row(cat.name, it)
+      end
+    end
+    if not MENU.is_open() then press("F5") end
   end
   print("---- " .. cat.name .. " ----"); print(mailbox_text())
   press("PAGEDOWN")
@@ -409,89 +450,16 @@ do
   end
 
   write_u32(P + 2496, 0)
-  -- A state pose.
-  F.items.pose.v = 1
-  local msg = F.activate(make_ctx(), F.items.pose)
-  assert(msg == "Pose: Dance 2" and read_u32(P + 952) == 160, msg)
-  write_u32(P + 952, 42); update(1)                    -- the game reset it while still
-  assert(read_u32(P + 952) == 160, "pose not held")
-  write_f32(P + 20, read_f32(P + 20) + 2); update(1)    -- moved: the pose ends
-  assert(F.posing == nil, "moving should end the pose")
-  write_f32(P + 20, read_f32(P + 20) - 2)
-  -- A file pose: played directly, marked as a custom animation, replayed when it ends.
-  for i, pose in ipairs(F.items.pose.items) do if pose[2] == "Read the paper" then F.items.pose.v = i end end
-  msg = F.activate(make_ctx(), F.items.pose)
-  assert(msg == "Pose: Read the paper", msg)
-  assert(played_files[#played_files] == "PML1_BS_RdPpr.anim" and read_u32(P + 756) == 297 and read_u32(P + 760) == 0x00AB0001,
-    "file pose not played: " .. tostring(played_files[#played_files]) .. " " .. read_u32(P + 756) .. " " .. msg)
-  write_u32(P + 756, 0); update(1)
-  assert(read_u32(P + 756) == 297, "file pose not replayed")
-  F.activate(make_ctx(), F.items.stop_pose)
-  -- A pose your character hasn't got: picking it says so, browsing skips it.
-  for i, pose in ipairs(F.items.pose.items) do if pose[2] == "Pose" then F.items.pose.v = i end end
-  msg = F.activate(make_ctx(), F.items.pose)
-  assert(msg == "Your character can't do that one", msg)
-  F.items.pose.v = F.items.pose.v - 1
-  F.adjust(make_ctx(), F.items.pose, 1)
-  assert(F.items.pose.items[F.items.pose.v][2] ~= "Pose", "browsing should skip a pose the character hasn't got")
-  F.activate(make_ctx(), F.items.stop_pose)
-  -- Locked by an action: RB + D-pad Up frees the player and restores the lock fields.
-  write_u32(P + 4040, 0); write_u8(P + 3593, 0)
-  F.items.repeat_action.v = true
-  F.items.action.v = 1
-  F.activate(make_ctx(), F.items.action)
-  assert(read_u32(P + 4040) == 3 and (read_u8(P + 3593) & 16) ~= 0, "action should mark the player busy")
-  if require("menu").is_open() then press("F5") end
-  keys_down["W"] = true; update(1); keys_down["W"] = nil
-  assert(F.repeating ~= nil, "W alone should not stop a repeat any more")
-  local PADS = 0x49000200
-  local function pad(buttons)
-    write_u16(PADS + 4, buttons)
-    local c = make_ctx(); c.regs[3] = 0; c.regs[5] = PADS
-    hooks[0x82788EC4](c)
-    return read_u16(PADS + 4)
+  -- Poses and Actions (itsMJQ's emotes.lua): each opens a page of the game's
+  -- categories, or says why not; neither may error.
+  for _, id in ipairs({ "poses", "actions" }) do
+    local it = F.items[id]
+    assert(it and it.kind == "page", id .. " should be a page")
+    local ok, pg = pcall(it.open, make_ctx(), P, it)
+    assert(ok, id .. " page failed: " .. tostring(pg))
+    assert(type(pg) == "table" or type(pg) == "string", id .. " page should open or explain")
   end
-  pad(0x0200)                                  -- RB held
-  local seen = pad(0x0200 | 0x0001)            -- then D-pad Up
-  assert((seen & 0x0001) == 0, "D-pad Up should be kept from the game while RB is held")
-  update(1); pad(0)
-  assert(F.repeating == nil and read_u32(P + 4040) == 0 and (read_u8(P + 3593) & 16) == 0, "RB + Up should free the player")
-  -- A pose puts back exactly the state the player was in before.
-  write_u32(P + 952, 77)
-  F.items.pose.v = 1
-  F.activate(make_ctx(), F.items.pose)
-  pad(0x0200); pad(0x0201); update(1); pad(0)
-  assert(read_u32(P + 952) == 77, "the player's own state should come back, got " .. read_u32(P + 952))
-  F.items.repeat_action.v = false
-  press("F5")
-  -- Counts: the Pose row counts only what the character can do ("pose" is missing here).
-  F.refresh_usable(make_ctx())
-  local missing = {}
-  for i, pose in ipairs(F.items.pose.items) do
-    local found = false
-    for _, k in ipairs(F.items.pose.ok) do if k == i then found = true end end
-    if not found then missing[#missing + 1] = type(pose[1]) == "table" and pose[1].file or pose[1] end
-  end
-  assert(#F.items.pose.ok == #F.items.pose.items - 1, "usable count should leave out only the missing pose; missing: " .. table.concat(missing, ", "))
-  assert(F.list_position(F.items.pose):match("/" .. (#F.items.pose.items - 1) .. "$"), F.list_position(F.items.pose))
-  -- An action, played directly.
-  local scripts_before = #scripts
-  F.items.action.v = 1
-  msg = F.activate(make_ctx(), F.items.action)
-  assert(msg == "Flip off" and played_actions[#played_actions] == P, msg)
-  assert(#scripts == scripts_before, "actions must not use the script engine")
-
-  -- Repeat action: the last action plays again every few seconds until you move.
-  F.items.repeat_action.v = true
-  F.items.action.v = 1
-  F.activate(make_ctx(), F.items.action)
-  local plays = #played_actions
-  update(math.floor(F.items.repeat_every.v * 50) + 2)
-  assert(#played_actions > plays, "action not repeated")
-  write_f32(P + 20, read_f32(P + 20) + 2); update(1)
-  assert(F.repeating == nil, "moving should stop repeating")
-  write_f32(P + 20, read_f32(P + 20) - 2)
-  F.items.repeat_action.v = false
+  F.activate(make_ctx(), F.items.stop_pose)
 
   -- Partner and scene: people spawn one per update, each in their part.
   local next_obj, next_handle = 0x51000000, 0x00080020
@@ -905,7 +873,9 @@ do
   assert(pad(RB) == RB, "RB alone must reach the game (sprint)")
   assert(pad(RB | DOWN) == RB, "D-pad down leaked to the game with RB held")
   assert(MENU.is_open(), "RB + D-pad down did not open the menu")
-  assert(taken["SHIFT"] and taken["R"] and taken["Q"], "keyboard keys mapped onto the pad not taken")
+  -- (itsMJQ) outside Customize you can still move with the menu open: the
+  -- menu takes its own keys, the movement keys stay the game's.
+  assert(taken["UP"] and taken["ENTER"] and not taken["W"], "menu keys taken, movement keys left to the game")
   assert(pad(RB | DOWN) == 0, "the game should see nothing while the menu is open")
   MENU.tab = 1
   pad(RB); pad(0)
@@ -916,6 +886,7 @@ do
   assert(MENU.tab == 2, "an RB tap did not change tab")
   pad(LB); pad(0)
   assert(MENU.tab == 1, "LB did not change tab")
+  MENU.cursor[1], MENU.scroll[1] = 1, 1          -- (the walk above left it on the last row)
   local c = MENU.cursor[1]
   pad(DOWN); pad(0)
   assert(MENU.cursor[1] == c + 1, "D-pad down did not move the cursor")
@@ -1090,10 +1061,38 @@ do
     tabs[cat.name] = true
     for _, it in ipairs(cat.items) do in_tab[it.id] = cat.name end
   end
-  assert(not tabs.Aim and in_tab.aim_style == "Weapons" and in_tab.aim_camera == "Weapons" and in_tab.fine_aim_zoom == "Weapons",
+  assert(not tabs.Aim and in_tab.aim_style == "Weapons" and in_tab.aim_camera_page == "Weapons" and in_tab.fine_aim_zoom == "Weapons",
     "aim rows not in Weapons")
+  -- Precise Aim's camera rows are on their page; aim rows show only with their aim style.
+  local cam = {}
+  for _, it in ipairs(F.items.aim_camera_page.open().rows) do cam[it.id] = true end
+  assert(cam.aim_camera and cam.aim_zoom and cam.aim_save and not in_tab.aim_camera, "Precise Aim camera page")
+  local pos = {}
+  for i, it in ipairs(F.items.aim_camera_page and (function() for _, c in ipairs(F.categories) do if c.name == "Weapons" then return c.items end end end)()) do pos[it.id] = i end
+  assert(pos.aim_camera_page == pos.aim_style + 1 and pos.fine_aim_zoom == pos.aim_style + 2 and pos.fine_aim_spread == pos.aim_style + 3
+    and pos.give_weapon > pos.fine_aim_spread, "aim rows under Aim style")
+  local was = F.items.aim_style.v
+  F.items.aim_style.v = 1
+  assert(F.items.aim_camera_page.hidden() and F.items.fine_aim_zoom.hidden() and F.items.aim_button.hidden(), "aim rows hidden with the game's aim")
+  F.items.aim_style.v = 2
+  assert(not F.items.aim_camera_page.hidden() and F.items.fine_aim_zoom.hidden() and not F.items.precise_turning.hidden(), "Precise Aim rows")
+  F.items.aim_style.v = 3
+  assert(F.items.aim_camera_page.hidden() and not F.items.fine_aim_spread.hidden() and not F.items.aim_button.hidden(), "Fine Aim rows")
+  F.items.aim_style.v = was
+  local ws = F.items.weapon_switch.v
+  F.items.weapon_switch.v = false; assert(F.items.weapon_dpad.hidden(), "D-pad row hidden with weapon switch off")
+  F.items.weapon_switch.v = true; assert(not F.items.weapon_tap.hidden(), "wheel tap row shown with weapon switch on")
+  F.items.weapon_switch.v = ws
+  -- Money and respect on the Player tab; active tweaks on the Settings tab; UI+ rows are switches.
+  assert(in_tab.money == "Player" and in_tab.respect == "Player" and in_tab.status == "Settings", "Player / Settings rows")
+  assert(F.items.low_health_fx.kind == "toggle" and not F.items.low_health_fx.v, "UI+ rows are switches, off")
+  -- The control preferences are a Controls page in Settings (next to itsMJQ's pages).
+  assert(in_tab.settings_controls == "Settings", "Controls page missing from Settings")
+  local ctl = F.items.settings_controls.open()
+  local in_ctl = {}
+  for _, it in ipairs(ctl.rows) do in_ctl[it.id] = true end
   for _, id in ipairs({ "camera_turn", "aim_button", "precise_turning", "precise_aim_turn", "fine_aim_turn", "weapon_dpad", "weapon_tap" }) do
-    assert(in_tab[id] == "Settings", id .. " should be in Settings, is in " .. tostring(in_tab[id]))
+    assert(in_ctl[id] and not in_tab[id], id .. " should be on the Controls page")
   end
   -- Camera turn speed writes the game's look sensitivity (both axes).
   write_f32(0x827D9778 + 312, 1.0); write_f32(0x827D9778 + 316, 1.0)
@@ -1121,8 +1120,6 @@ do
       for _, l in ipairs(lines) do assert(#l <= 90, it.id .. " help line too long: " .. l) end
     end
   end
-  local sp = MENU.wrap_help(F.items.spawn_person.help)
-  assert(sp[2]:find("^They come as civilians") and sp[2]:find("fight%.$"), "spawn person should break after the fight sentence: " .. table.concat(sp, " | "))
 end
 
 print(string.format("\n%d script calls, %d console lines, %d HUD messages, %d errors", #scripts, #consoles, #hud_texts, errors))

@@ -9,6 +9,8 @@
 --   weapons.xtbl           NPC_Damage, Trigger_Type (optional settings)
 --   spawn_info_ranks.xtbl  enemies' Hit_Points (optional setting)
 --   gameplay_constants     Ragdoll_Melee_Impulse_Multiplier (optional)
+--   GML_CUST.xtbl          adds the empty SRT_Player animation set the
+--                          Movement style menu gives the player
 --
 -- Every number comes from [settings] in mod.ini; at their defaults only
 -- Nitro_Capable changes. Everything else is switched live in the menu.
@@ -204,6 +206,130 @@ local function patch_constants(xml)
   return xml, changed
 end
 
+-- GML_CUST.xtbl (one of the animation set files): one more, empty set,
+-- SRT_Player, which only the player is given while a Movement style is
+-- chosen. It has no animations of its own, so the menu can tell the
+-- player's lookups from everyone else's and answer them from the chosen
+-- style (features.lua). Its parent is the player's normal set, GML1, so
+-- with the menu off it animates exactly like the game's own player.
+local PLAYER_SET = [[
+	<Skeleton_Set>
+		<Parent_Skeleton>GML1</Parent_Skeleton>
+		<Name>SRT_Player</Name>
+		<Groups>
+			<Group>
+				<group>Default</group>
+				<States></States>
+				<Actions></Actions>
+				</Group>
+			</Groups>
+		<_Editor>
+			<Category>Entries</Category>
+			</_Editor>
+		</Skeleton_Set>
+]]
+local function patch_anim_sets(xml)
+  if xml:find("<Name>SRT_Player</Name>", 1, true) then return xml, 0 end
+  local at = xml:find("</Table>", 1, true)
+  if not at then return xml, 0 end
+  -- Back to the start of the line holding </Table>.
+  local line = at
+  while line > 1 and xml:sub(line - 1, line - 1) ~= "\n" do line = line - 1 end
+  return xml:sub(1, line - 1) .. PLAYER_SET .. xml:sub(line), 1
+end
+
+-- ---------------------------------------------------------- HUD images
+--
+-- New pictures in cells of the HUD sheets the game leaves empty, so every
+-- existing picture keeps its place. hud_sheet_11 (the homie heads): No
+-- Render heads (her / him) for homies without a head picture and a yellow
+-- minimap dot for Vice Kings on your side. hud_sheet_10: heads for gang
+-- members you recruit (Vice Kings, Los Carnales, Rollerz; his and hers) and
+-- the co-op player's logo. hud_images.bin holds the compressed 4x4 blocks
+-- (built by build_heads_patch.py from the sheets themselves).
+local HUD_IMAGES = {
+  { "hud_sheet_11", "recruit_norender_f", 128, 448, 64, 64 },
+  { "hud_sheet_11", "recruit_norender_m", 192, 448, 64, 64 },
+  { "hud_sheet_11", "map_other_blip_yellow", 192, 0, 48, 48 },
+  { "hud_sheet_10", "recruit_vicekingz_m", 256, 320, 64, 64 },
+  { "hud_sheet_10", "recruit_vicekingz_f", 320, 320, 64, 64 },
+  { "hud_sheet_10", "recruit_carnales_m", 384, 320, 64, 64 },
+  { "hud_sheet_10", "recruit_carnales_f", 448, 320, 64, 64 },
+  { "hud_sheet_10", "recruit_wrollerz_m", 256, 384, 64, 64 },
+  { "hud_sheet_10", "recruit_wrollerz_f", 320, 384, 64, 64 },
+  { "hud_sheet_10", "recruit_coop_player", 384, 384, 64, 64 },
+}
+local function patch_hud_sheets(peg)
+  local file = io.open(wml.mod_folder .. "/hud_images.bin", "rb")
+  if not file then return peg, 0 end
+  local bin = file:read("*a"); file:close()
+  if bin:sub(1, 4) ~= "SRT2" then return peg, 0 end
+  -- Where each sheet's data starts in the peg, and its size and format.
+  local sheets = {}
+  local n = string.unpack(">I2", peg, 0x10 + 1)
+  for j = 0, n - 1 do
+    local e = 0x18 + j * 0x48
+    local off, w, h, fmt = string.unpack(">I4I2I2I2", peg, e + 1)
+    local name = peg:sub(e + 0x16 + 1, e + 0x46):match("^[\1-\31]*([^%z]*)")
+    if name then sheets[name:lower():gsub("%.tga$", "")] = { off, w, h, fmt } end
+  end
+  local recs, total = {}, 0
+  local at = 9
+  for _ = 1, string.unpack(">I4", bin, 5) do
+    local sheet = bin:sub(at, at + 15):match("^[^%z]*")
+    local w, h, count = string.unpack(">I2I2I4", bin, at + 16)
+    at = at + 24
+    local s = sheets[sheet]
+    if s and s[2] == w and s[3] == h and s[4] == 0x191 then
+      for i = 0, count - 1 do
+        local base = at + i * 20
+        recs[#recs + 1] = { s[1] + string.unpack(">I4", bin, base), bin:sub(base + 4, base + 19) }
+      end
+      total = total + count
+    else
+      wml.log("HUD images: " .. sheet .. " isn't the expected " .. w .. "x" .. h .. " DXT3; left alone")
+    end
+    at = at + count * 20
+  end
+  if total == 0 then return peg, 0 end
+  table.sort(recs, function(a, b) return a[1] < b[1] end)
+  local parts, from = {}, 1
+  for _, r in ipairs(recs) do
+    parts[#parts + 1] = peg:sub(from, r[1])
+    parts[#parts + 1] = r[2]
+    from = r[1] + 17
+  end
+  parts[#parts + 1] = peg:sub(from)
+  return table.concat(parts), total
+end
+
+local function patch_bitmap_sheets(xml)
+  local added = 0
+  for _, im in ipairs(HUD_IMAGES) do
+    local s = xml:find("<Name>" .. im[1] .. "</Name>", 1, true)
+    local e = s and xml:find("</Images>", s, true)
+    if e and not xml:sub(s, e):find("<Name>" .. im[2] .. "</Name>", 1, true) then
+      local add = string.format("\t\t\t<Properties>32<Name>%s</Name>\n\t\t\t\t<StartX>%d</StartX>\n\t\t\t\t<StartY>%d</StartY>\n" ..
+        "\t\t\t\t<ImageWidth>%d</ImageWidth>\n\t\t\t\t<ImageHeight>%d</ImageHeight>\n\t\t\t\t</Properties>\n", im[2], im[3], im[4], im[5], im[6])
+      local line = e
+      while line > 1 and xml:sub(line - 1, line - 1) ~= "\n" do line = line - 1 end
+      xml = xml:sub(1, line - 1) .. add .. xml:sub(line)
+      added = added + 1
+    end
+  end
+  return xml, added
+end
+do
+  local peg = wml.packfile_read("pegfiles.vpp_xbox2", "interface-backend.peg_xbox2")
+  if peg then
+    local new, n = patch_hud_sheets(peg)
+    if n > 0 then
+      wml.packfile_write("pegfiles.vpp_xbox2", "interface-backend.peg_xbox2", new)
+      wml.log("pegfiles.vpp_xbox2: interface-backend.peg_xbox2 - " .. n .. " blocks of new HUD pictures")
+    end
+  end
+end
+
 -- -------------------------------------------------------------------- main
 
 local FILES = {
@@ -211,6 +337,8 @@ local FILES = {
   { "weapons.xtbl",        patch_weapons },
   { "spawn_info_ranks.xtbl", patch_ranks },
   { "gameplay_constants.xtbl", patch_constants },
+  { "GML_CUST.xtbl",       patch_anim_sets },
+  { "bitmap_sheets.xtbl",  patch_bitmap_sheets },
 }
 
 for _, pack in ipairs(PACKS) do

@@ -134,15 +134,16 @@ end
 local shield_was, shield_until = nil, 0
 local tick, rate = 0, 50
 local updates, second = 0, os.time()
+-- The menu owns the invulnerability bit (W.shield, set by main.lua); on
+-- its own the bit is handled here.
 local function shield_on(p)
-  if shield_was == nil then shield_was = (read_u32(p + 216) & INVULNERABLE) ~= 0 end
-  set_invulnerable(p, true)
+  shield_was = true
+  if W.shield then W.shield(true, p) else set_invulnerable(p, true) end
 end
 local function shield_off(p)
   if shield_was ~= nil then
-    -- What god mode says now, not what was remembered (that could be a
-    -- god mode since switched off).
-    if p ~= 0 then set_invulnerable(p, W.god and W.god() or false) end
+    if W.shield then W.shield(false, p)
+    elseif p ~= 0 then set_invulnerable(p, W.god and W.god() or false) end
     shield_was = nil
   end
   shield_until = 0
@@ -156,6 +157,7 @@ local function teleport(ctx, p, x, y, z, stream)
   if stream then call(ctx, STREAM_AT, { pos, 0, 0 }) end
   call(ctx, PLAYER_TELEPORT, { p, pos, rows })
   write_f32(p + 404, x); write_f32(p + 408, y); write_f32(p + 412, z)
+  if W.on_teleport then W.on_teleport() end
 end
 
 -- Height of whatever is under (x, z), from `top` down to `bottom`, with the
@@ -357,7 +359,10 @@ function W.update(ctx)
   end
   local p = G.player()
   if p == 0 or G.in_front_end() then
-    request, settle, shield_was = nil, nil, nil
+    -- Never just forgotten: a shield left raised here was a god mode that
+    -- wouldn't go away.
+    request, settle = nil, nil
+    shield_off(p)
     return
   end
   if request then
