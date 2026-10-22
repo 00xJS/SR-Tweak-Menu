@@ -22,10 +22,13 @@
 
 local G = require("game")
 local F = require("features")
--- The menu is the plain overlay text, without sounds (gameui.lua only draws
--- the low health and low sprint screen effects).
-local UI = { sound = function() end }
 local S = wml.setting
+-- Two looks (Settings > Menu look, menu_style in mod.ini): the plain overlay
+-- text, silent, or itsMJQ's game look - the menu drawn with the game's own
+-- interface (gameui.lua: its fonts, menu pictures and sounds).
+local GAMEUI = require("gameui")
+local style_game = tostring(S("menu_style", "text")):lower() == "game"
+local UI = setmetatable({ sound = function(ctx, name) if style_game then GAMEUI.sound(ctx, name) end end }, { __index = GAMEUI })
 
 local M = { open = false, tab = 1, cursor = {}, scroll = {}, status = "", status_until = 0, dll = false, pad = 0 }
 
@@ -589,7 +592,232 @@ local function wrap_help(text)
 end
 M.wrap_help = wrap_help
 
+-- ------------------------------------------------------------- game look
+--
+-- The menu in the game's own interface (gameui.lua): tabs like the pause
+-- menu's (LB / RB, the one you're on in gold), the dark menu box with its
+-- fleur-de-lis ornaments, rows in px_thin with the gold bar on the one
+-- selected, arrows round values you can change, a scroll bar, the
+-- description under the box and the buttons to press. Laid out in 1280 x 720
+-- units from the top left (menu_x, menu_y), all sizes times menu_scale.
+-- (itsMJQ's, from 1.9.11; Settings > Menu look picks it or the plain text.)
+local MX, MY = S("menu_x", 36), S("menu_y", 36)
+local K = math.max(0.5, math.min(2.0, S("menu_scale", 1.0)))
+local W = 470
+local GOLD, WHITE, GREY, DIM = { 255, 196, 64, 255 }, { 255, 255, 255, 255 }, { 200, 200, 200, 255 }, { 140, 140, 140, 255 }
+local BLACK = { 0, 0, 0, 255 }
+
+-- The text, shortened with "..." to fit `room` layout units, and its width.
+local function fit(ctx, font, size, text, room)
+  local w = UI.width(ctx, font, text) * size
+  if w <= room then return text, w end
+  while #text > 1 do
+    text = text:sub(1, -2)
+    w = UI.width(ctx, font, text .. "...") * size
+    if w <= room then return text .. "...", w end
+  end
+  return text, w
+end
+
+function M.build_frame(ctx)
+  local fr = {}
+  local function quad(image, x, y, w, h, colour, extra)
+    local op = { image = image, x = x, y = y, w = w, h = h, colour = colour }
+    if extra then for k, v in pairs(extra) do op[k] = v end end
+    fr[#fr + 1] = op
+  end
+  local function text(font, size, s, x, y, colour)
+    fr[#fr + 1] = { text = s, font = font, size = size, x = x, y = y, colour = colour }
+  end
+  -- Sizes: text heights in layout units, whatever the fonts' own sizes are.
+  local heading = 26 * K / UI.line_height("giant")
+  local row_size = 19 * K / UI.line_height("thin")
+  local help_size = 16 * K / UI.line_height("thin")
+  local w = W * K
+  local x0, y = MX, MY
+  local cat = F.categories[M.tab]
+  local list = view_rows()
+  local n = #F.categories
+  -- Tabs: LB, the one before, the one you're on, the one after, RB.
+  local tab_h = 34 * K
+  quad("ui_menu_box_base_c", x0, y, w, tab_h, { 128, 128, 128, 200 })
+  quad("ui_menu_box_edge", x0, y + tab_h - 3 * K, w, 3 * K)
+  local prev_name = F.categories[step_tab(M.tab, -1)].name:upper()
+  local next_name = F.categories[step_tab(M.tab, 1)].name:upper()
+  local cur_name = cat.name:upper()
+  local pad = device == "pad"
+  local lb, rb = pad and "control_lb" or nil, pad and "control_rb" or nil
+  local cx = x0 + w / 2
+  local cur_w = UI.width(ctx, "giant", cur_name) * heading
+  text("giant", heading, cur_name, cx - cur_w / 2, y + 4 * K, GOLD)
+  local side = 13 * K / UI.line_height("giant") * 1.4
+  local pw = UI.width(ctx, "giant", prev_name) * side
+  text("giant", side, prev_name, cx - cur_w / 2 - 18 * K - pw, y + 9 * K, DIM)
+  text("giant", side, next_name, cx + cur_w / 2 + 18 * K, y + 9 * K, DIM)
+  if pad then
+    quad(lb, x0 + 4 * K, y + 3 * K, 38 * K, 29 * K)
+    quad(rb, x0 + w - 42 * K, y + 3 * K, 38 * K, 29 * K)
+  else
+    text("thin", help_size, "PGUP", x0 + 8 * K, y + 9 * K, DIM)
+    local pw2 = UI.width(ctx, "thin", "PGDN") * help_size
+    text("thin", help_size, "PGDN", x0 + w - 8 * K - pw2, y + 9 * K, DIM)
+  end
+  y = y + tab_h + 6 * K
+  -- The box: dark base, ornaments top and bottom, heading, rows, scroll bar.
+  local rows_shown = math.min(ROWS, #list)
+  local row_h = 28 * K
+  local head_h = 46 * K
+  local box_h = head_h + rows_shown * row_h + 18 * K
+  quad("ui_menu_box_base_c", x0, y, w, box_h, { 128, 128, 128, 215 })
+  quad("ui_menu_box_edge", x0, y, w, 3 * K)
+  quad("ui_menu_box_edge", x0, y + box_h - 3 * K, w, 3 * K, nil, { flip_v = true })
+  local orn_w, orn_h = 220 * K, 41 * K
+  quad("ui_menu_ornate_0", cx - orn_w / 2, y - 14 * K, orn_w, orn_h)
+  quad("ui_menu_ornate_0", cx - orn_w / 2, y + box_h - orn_h + 14 * K, orn_w, orn_h, nil, { flip_v = true })
+  local box = (cat.title or cat.name):upper()   -- (the box can name the tab's contents: CHARACTER in Customize)
+  local title = page() and page().title:upper() or (F.enabled and box or (box .. " (ALL OFF)"))
+  local tw = UI.width(ctx, "giant", title) * heading
+  text("giant", heading, title, cx - tw / 2, y + 12 * K, GOLD)
+  quad("ui_menu_hr", x0 + 12 * K, y + head_h - 4 * K, w - 24 * K, 2 * K)
+  local s, e = scroll(), math.min(#list, scroll() + ROWS - 1)
+  local ry = y + head_h
+  local inner = w - 40 * K
+  for i = s, e do
+    local it = list[i]
+    local selected = i == cursor()
+    -- (on the gold bar the text is black, as in the game's menus)
+    local ON = selected and BLACK or nil
+    if it.kind == "header" then
+      -- A heading: in the tab titles' font, gold, centred, with the rule under it.
+      local hs = 21 * K / UI.line_height("giant")
+      local hw = UI.width(ctx, "giant", it.label:upper()) * hs
+      text("giant", hs, it.label:upper(), cx - hw / 2, ry + (row_h - 21 * K) / 2, GOLD)
+      quad("ui_menu_hr", x0 + 40 * K, ry + row_h - 3 * K, w - 80 * K, 2 * K)
+      ry = ry + row_h
+      goto next_row
+    end
+    if selected then quad("ui_menu_text_selected", x0 + 10 * K, ry + 2 * K, inner + 6 * K, row_h - 4 * K) end
+    local value = F.value_text(it)
+    if it.kind == "action" then value = it.note and it.note() or "" end
+    if it.kind == "list" then
+      value = (it.ok and #it.ok == 0) and "none available" or it.items[it.v][2]
+    elseif it.kind == "toggle" then
+      value = it.v and "ON" or "OFF"
+    elseif value:sub(1, 2) == "< " then
+      value = value:sub(3, -3)
+    end
+    local changeable = it.kind == "value" or it.kind == "choice" or it.kind == "list" or it.kind == "toggle"
+    local label_room = inner * 0.55
+    local label = fit(ctx, "thin", row_size, it.label, label_room)
+    local ty = ry + (row_h - 19 * K) / 2 - 1 * K
+    text("thin", row_size, label, x0 + 18 * K, ty, ON or GREY)
+    if it.kind == "page" then
+      -- Opens a page: the arrow the game puts on a menu entry with more under it.
+      quad("ui_menu_arrow_right", x0 + 10 * K + inner - 18 * K, ry + 6 * K, 11 * K, 15 * K, ON or GREY)
+    elseif it.kind == "value" and it.bar then
+      -- A slider like the creator's: the bar, filled to the value, the knob on it.
+      local frac = (it.v - it.min) / math.max(1e-9, it.max - it.min)
+      if it.live and it.read then
+        local p = G.player()
+        local ok, r = pcall(it.read, p)
+        if ok and r then frac = (r - it.min) / math.max(1e-9, it.max - it.min) end
+      end
+      frac = math.max(0, math.min(1, frac))
+      local bw, bh = inner * 0.40, 12 * K
+      local bx, by = x0 + 10 * K + inner - bw - 22 * K, ry + (row_h - bh) / 2
+      quad("ui_menu_slide_base_deselected", bx, by, bw, bh)
+      quad("ui_menu_slide_base_selected", bx, by, bw * frac, bh, selected and nil or { 200, 200, 200, 255 })
+      quad("ui_menu_slide_base_border", bx - 2 * K, by - 2 * K, bw + 4 * K, bh + 4 * K)
+      quad("ui_menu_slide_base_control", bx + bw * frac - 6 * K, by - 4 * K, 12 * K, bh + 8 * K)
+      if selected then
+        quad("ui_menu_arrow_left", bx - 18 * K, ry + 6 * K, 11 * K, 15 * K)
+        quad("ui_menu_arrow_right", bx + bw + 7 * K, ry + 6 * K, 11 * K, 15 * K)
+      end
+    elseif value ~= "" then
+      local arrows = selected and changeable
+      local room = inner - label_room - (arrows and 34 * K or 6 * K)
+      local v, vw = fit(ctx, "thin", row_size, value, room)
+      local right = x0 + 10 * K + inner - (arrows and 18 * K or 4 * K)
+      text("thin", row_size, v, right - vw, ty, ON or (it.kind == "action" and GOLD) or (it.kind == "toggle" and it.v and GOLD or GREY))
+      if arrows then
+        quad("ui_menu_arrow_left", right - vw - 16 * K, ry + 6 * K, 11 * K, 15 * K)
+        quad("ui_menu_arrow_right", right + 4 * K, ry + 6 * K, 11 * K, 15 * K)
+      end
+    end
+    ry = ry + row_h
+    ::next_row::
+  end
+  -- Scroll bar when the rows don't all fit.
+  if #list > ROWS then
+    local sx, sy, sh = x0 + w - 24 * K, y + head_h + 2 * K, rows_shown * row_h - 4 * K
+    quad("ui_menu_scroll_base_top", sx, sy, 14 * K, 4 * K)
+    quad("ui_menu_scroll_base_mid", sx, sy + 4 * K, 14 * K, sh - 8 * K)
+    quad("ui_menu_scroll_base_bottom", sx, sy + sh - 4 * K, 14 * K, 4 * K)
+    local frac = ROWS / #list
+    local th = math.max(14 * K, sh * frac)
+    local pos = (scroll() - 1) / math.max(1, #list - ROWS)
+    quad("ui_menu_scroll_bar", sx + 2 * K, sy + (sh - th) * pos, 10 * K, th)
+  end
+  y = y + box_h + 8 * K
+  -- The description, then the buttons.
+  local it = current_item()
+  local help = it.help or ""
+  if it.kind == "value" and help ~= "" and not it.bar then help = help .. "  Default " .. it.fmt(it.default) .. "." end
+  local lines = wrap_help(help)
+  -- Messages first, in gold, wrapped like the help (at most STATUS_LINES).
+  local status_n = 0
+  if M.status ~= "" and M.tick < M.status_until then
+    local wrapped = wrap_help(M.status)
+    status_n = math.min(#wrapped, STATUS_LINES)
+    for k = status_n, 1, -1 do table.insert(lines, 1, wrapped[k]) end
+  end
+  local line_h = 19 * K
+  local help_h = (#lines + 1) * line_h + 14 * K
+  quad("ui_menu_box_base_c", x0, y, w, help_h, { 128, 128, 128, 190 })
+  local hy = y + 6 * K
+  for li, l in ipairs(lines) do
+    local shown = fit(ctx, "thin", help_size, l, w - 24 * K)
+    text("thin", help_size, shown, x0 + 12 * K, hy, li <= status_n and GOLD or GREY)
+    hy = hy + line_h
+  end
+  -- Buttons.
+  local bx = x0 + 12 * K
+  local function hint(image, label)
+    if image then
+      quad(image, bx, hy - 2 * K, 22 * K, 23 * K)
+      bx = bx + 25 * K
+    end
+    text("thin", help_size, label, bx, hy, WHITE)
+    bx = bx + UI.width(ctx, "thin", label) * help_size + 14 * K
+  end
+  if pad then
+    hint("a_button", page() and "ACCEPT" or "SELECT"); hint("b_button", "BACK"); hint("control_dpad", "MOVE / CHANGE")
+  else
+    hint(nil, page() and "ENTER ACCEPT" or "ENTER SELECT"); hint(nil, "BACKSPACE BACK"); hint(nil, "ARROWS MOVE / CHANGE"); hint(nil, KEY.open .. " CLOSE")
+  end
+  return fr
+end
+
+-- "game" (the game's interface) or "text" (plain overlay text); live.
+function M.set_style(name)
+  style_game = name == "game"
+  GAMEUI.ok = true
+  if not style_game then GAMEUI.frame = nil end
+end
+function M.style() return style_game and "game" or "text" end
+
 function M.render(tick)
+  if M.open and style_game and GAMEUI.ready() and M.ctx then
+    local ok, fr = pcall(M.build_frame, M.ctx)
+    if ok then
+      GAMEUI.frame = fr
+      if M.dll and last_text ~= "" then mailbox_write("") end
+      return
+    end
+    wml.log("menu (game look): " .. tostring(fr) .. "; plain text menu instead")
+    style_game = false
+  end
+  GAMEUI.frame = nil
   if not M.dll then return end
   if not M.open then return end
   local lines = {}
@@ -640,6 +868,18 @@ function M.render(tick)
   end
   mailbox_write(table.concat(lines, "\n"))
 end
+
+-- Settings > Menu look: the plain text or itsMJQ's game look, switched live
+-- and kept in mod.ini (menu_style).
+F.add_rows("Settings", "master", {
+  { id = "menu_look", label = "Menu look", kind = "choice", needs = "none", options = { "Plain text", "Game style" },
+    v = style_game and 2 or 1, nosave = true,
+    help = "Plain text, or the game's own menu look (its fonts, gold bar, menu box and sounds) by itsMJQ.",
+    change = function(ctx, p, v, it)
+      M.set_style(it.v == 2 and "game" or "text")
+      if F.ADDONS then F.ADDONS.save_setting(wml.mod_folder .. "/mod.ini", "menu_style", M.style()) end
+    end },
+})
 
 function M.is_open() return M.open end
 function M.current() if not M.open then return nil end local it = current_item() return it end

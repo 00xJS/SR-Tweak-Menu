@@ -1,5 +1,13 @@
 # SR Tweak Menu - changes
 
+## 2.3
+
+- Settings: **Menu look**, switched live: the plain text menu, or itsMJQ's
+  game look from 1.9.11 (the menu drawn with the game's own fonts, gold
+  selection bar, menu box and fleur-de-lis, with its menu sounds). Kept in
+  `mod.ini` as `menu_style`; `menu_x`, `menu_y` and `menu_scale` place the
+  game look. Messages wrap there too.
+
 ## 2.2
 
 Quality of life rows after the Saints Row 2 Juiced Patch (Kobraworks

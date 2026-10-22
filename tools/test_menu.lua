@@ -1292,4 +1292,42 @@ print(string.format("\n%d script calls, %d console lines, %d HUD messages, %d er
 for _, s in ipairs(scripts) do print("  script: " .. s) end
 for _, s in ipairs(consoles) do print("  console: " .. s) end
 assert(errors == 0, "there were errors")
+-- Menu look: itsMJQ's game look builds a frame for every tab and page (fonts
+-- faked: the test has no game textures), switches live, and goes back to
+-- the plain text.
+do
+  local MENU = require("menu")
+  local GAMEUI = require("gameui")
+  local real = { width = GAMEUI.width, line_height = GAMEUI.line_height, ready = GAMEUI.ready }
+  GAMEUI.width = function(_, _, s) return #s * 9 end
+  GAMEUI.line_height = function() return 20 end
+  GAMEUI.ready = function() return true end
+  MENU.set_style("game")
+  assert(MENU.style() == "game")
+  if not MENU.is_open() then press("F5") end
+  local frames = 0
+  for _ = 1, #F.categories do
+    update(1)
+    assert(type(GAMEUI.frame) == "table" and #GAMEUI.frame > 10, "no game-look frame on " .. MENU.tab_name())
+    frames = frames + 1
+    -- one level into each page on the tab
+    local cat
+    for _, c in ipairs(F.categories) do if c.name == MENU.tab_name() then cat = c end end
+    press("PAGEDOWN")
+  end
+  F.items.status.run(make_ctx())
+  update(1)
+  MENU.set_style("text"); update(1)
+  assert(GAMEUI.frame == nil and MENU.style() == "text", "back to plain text")
+  F.items.menu_look.v = 2; F.items.menu_look.change(make_ctx(), 0, 0, F.items.menu_look)
+  assert(MENU.style() == "game", "Menu look row switches the look")
+  local f = io.open(TMP .. "/mod.ini", "r")
+  local saved = f and f:read("a") or ""
+  if f then f:close() end
+  F.items.menu_look.v = 1; F.items.menu_look.change(make_ctx(), 0, 0, F.items.menu_look)
+  if MENU.is_open() then press("F5") end
+  GAMEUI.width, GAMEUI.line_height, GAMEUI.ready = real.width, real.line_height, real.ready
+  print("menu look: game frames built on " .. frames .. " tabs, switched live and back OK")
+end
+
 print("OK")
