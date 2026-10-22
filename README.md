@@ -15,14 +15,14 @@ An in-game cheat menu for Saints Reborn
    animation set (used by Movement styles).
 4. In game, open the menu:
    - **Keyboard:** F5
-   - **Xbox controller:** hold Back/View for 0.8 seconds, or hold RB and press D-pad Down
-   - **PlayStation controller:** hold Select/Share for 0.8 seconds, or hold R1 and press D-pad Down
+   - **Xbox controller:** hold RB and press D-pad Down
+   - **PlayStation controller:** hold R1 and press D-pad Down
 
 ## Controls
 
 | | Keyboard | Xbox | PlayStation |
 |---|---|---|---|
-| Open / close menu | F5 | Hold Back/View, or RB + D-pad Down | Hold Select/Share, or R1 + D-pad Down |
+| Open / close menu | F5 | RB + D-pad Down | R1 + D-pad Down |
 | Move | Up / Down | D-pad Up / Down | D-pad Up / Down |
 | Change value / browse list | Left / Right | D-pad Left / Right | D-pad Left / Right |
 | Select / open a page | Enter | A | Cross |
@@ -31,7 +31,7 @@ An in-game cheat menu for Saints Reborn
 | Stop a pose or repeating action | Shift + Up | RB + D-pad Up | R1 + D-pad Up |
 
 Outside the Customize tab you can still walk, drive and look around with the
-menu open. A short tap of Back still does the game's Back.
+menu open.
 
 ## Features
 
@@ -82,8 +82,8 @@ SR Tweak Menu already includes them.
 - **itsMJQ**: the Models and Customize tabs, movement styles, the emotes
   pages, voice lines and voices, character homies, customize vehicle, store
   and activity teleports, unlocks, render modes, the UI+ screen effects, the
-  music fixes, the menu's pages, hold-Back shortcut and moving with the menu
-  open, and the findings behind them (see the changelog).
+  music fixes, the menu's pages and moving with the menu open, and the
+  findings behind them (see the changelog).
 - [Precise Aim](https://github.com/Eazeepz/Precise-Aim) and
   [Weapon Switch](https://github.com/Eazeepz/Weapon-Switch) by Eazzy (Eazeepz),
   and [Fine Aim](https://github.com/car123609/SaintsReborn-Fine-Aim-Precision-Gunplay)

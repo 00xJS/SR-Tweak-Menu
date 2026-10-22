@@ -1288,6 +1288,19 @@ do
   assert(F.items.money_gun_cash.step == 100 and F.items.money_gun_cash.max == 10000, "bill value in hundreds")
 end
 
+-- Holding Back never opens the menu, and the game always gets its Back.
+do
+  local MENU = require("menu")
+  if MENU.is_open() then press("F5") end
+  for _ = 1, 100 do
+    local blank, hide = MENU.controller(MENU.PAD.BACK, 0, 0)
+    assert(not blank and (hide & MENU.PAD.BACK) == 0, "Back kept from the game")
+    update(1)
+  end
+  assert(not MENU.is_open(), "holding Back opened the menu")
+  MENU.controller(0, 0, 0); update(1)
+end
+
 print(string.format("\n%d script calls, %d console lines, %d HUD messages, %d errors", #scripts, #consoles, #hud_texts, errors))
 for _, s in ipairs(scripts) do print("  script: " .. s) end
 for _, s in ipairs(consoles) do print("  console: " .. s) end

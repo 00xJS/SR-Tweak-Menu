@@ -88,12 +88,8 @@ do
 end
 M.combo_text = combo_text
 M.parse_combo = parse_combo
-local HOLD = require("hold_button")
-local back_hold = HOLD.new(math.max(0.3, tonumber(S("menu_hold_seconds", 0.8)) or 0.8))
-local hold_enabled = S("menu_hold_back", true)
 function M.reset_controller()
-  M.pad, M.hold_toggle = 0, false
-  back_hold.started, back_hold.fired, back_hold.tap, back_hold.blocked = nil, nil, nil, true
+  M.pad = 0
 end
 
 for i = 1, #F.categories do M.cursor[i] = 1; M.scroll[i] = 1 end
@@ -445,10 +441,6 @@ function M.input(ctx, tick)
   track_taps()
   track_device()
   -- Open / close.
-  if M.hold_toggle then
-    M.hold_toggle = false
-    set_open(not M.open)
-  end
   if KEY.open ~= "" and wml.key_pressed(KEY.open) then set_open(not M.open) end
   if combo_press ~= 0 and (M.pad & combo_hold) == combo_hold and (M.pad & combo_press) ~= 0 and (pad_prev & combo_press) == 0 then
     set_open(not M.open)
@@ -535,13 +527,6 @@ M.update_free_move = update_free_move
 function M.controller(buttons, lt, rt)
   local pad = buttons | ((lt or 0) >= TRIGGER_PRESSED and PAD.LT or 0) | ((rt or 0) >= TRIGGER_PRESSED and PAD.RT or 0)
   M.pad = pad
-  local replay, held_back = 0, false
-  if hold_enabled then
-    local toggle, tap, hide = HOLD.update(back_hold, (pad & PAD.BACK) ~= 0, os.clock(),
-      M.open or G.playing(G.player()), M.open)
-    if toggle then M.hold_toggle = true end
-    replay, held_back = tap and PAD.BACK or 0, hide
-  end
   if M.open and block_input and M.free_move then
     swallow = (swallow & pad) | (pad & NAV_MASK)   -- (still hidden once it closes, until let go)
     return false, swallow
@@ -552,8 +537,7 @@ function M.controller(buttons, lt, rt)
   end
   swallow = swallow & pad
   if combo_press ~= 0 and (pad & combo_hold) == combo_hold then swallow = swallow | (pad & combo_press) end
-  if held_back then swallow = swallow | PAD.BACK end
-  return false, swallow, replay
+  return false, swallow
 end
 
 -- ------------------------------------------------------------- drawing

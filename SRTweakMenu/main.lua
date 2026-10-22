@@ -251,7 +251,7 @@ wml.hook(G.INPUT_GET_STATE, function(ctx)
   ADDONS.set_combo(MENU.combo_down(buttons)
     or (stop_press ~= 0 and (buttons & stop_hold) == stop_hold and (buttons & stop_press) ~= 0))
   local flying = FREECAM.capture(state)
-  local blank, hide, replay = MENU.controller(buttons, read_u8(state + 6), read_u8(state + 7))
+  local blank, hide = MENU.controller(buttons, read_u8(state + 6), read_u8(state + 7))
   if flying and not blank then
     -- The free camera has the pad: the game sees nothing pressed, and a new
     -- packet number so a stick held when it started doesn't keep walking.
@@ -276,9 +276,9 @@ wml.hook(G.INPUT_GET_STATE, function(ctx)
     hide = hide | stop_press
   end
   stop_prev = buttons
-  if hide ~= 0 or (replay or 0) ~= 0 then
+  if hide ~= 0 then
     -- The menu combo's D-pad press, or buttons still held from the menu.
-    write_u16(state + 4, ((buttons & ~hide) | (replay or 0)) & 0xFFFF)
+    write_u16(state + 4, (buttons & ~hide) & 0xFFFF)
     write_u32(state, read_u32(state) + 1)
     if (hide & MENU.PAD.LT) ~= 0 then write_u8(state + 6, 0) end
     if (hide & MENU.PAD.RT) ~= 0 then write_u8(state + 7, 0) end

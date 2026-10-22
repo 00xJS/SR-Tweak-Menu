@@ -1,5 +1,11 @@
 # SR Tweak Menu - changes
 
+## 2.4.3
+
+- Holding Back (Select/Share) no longer opens the menu: it got in the way
+  of the game's own Back. Open the menu with F5, or RB (R1) + D-pad Down.
+  (`menu_hold_back` and `menu_hold_seconds` are gone from `mod.ini`.)
+
 ## 2.4.2
 
 - The camera reset rows have new names in `mod.ini`
