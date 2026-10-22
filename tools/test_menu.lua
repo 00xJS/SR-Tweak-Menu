@@ -203,16 +203,21 @@ end
 -- The game is always the Windows build (under Wine on the Mac), and menu.lua
 -- draws through the overlay only there; look like it on any host.
 package.config = "\\" .. package.config:sub(2)
+os.remove(TMP .. "/saved_tweaks.ini"); os.remove(TMP .. "/quicksave.dat")
 dofile(folder .. "/main.lua")
 assert(hooks[0x82209E30], "update hook missing")
 assert(hooks[0x82788EC4], "input hook missing")
 assert(hooks[0x824470D0], "damage hook missing")
 
--- Everything starts off: toggles off, sliders at the game's own value.
+-- Everything starts off: toggles off, sliders at the game's own value -
+-- except the Quality of life rows meant to be on (mod.ini says so).
 local F0 = require("features")
+local STARTS_ON = { crouch_moving = true, car_cam_nose = true, driveby_cam = true }
 for _, cat in ipairs(F0.categories) do
   for _, it in ipairs(cat.items) do
-    if it.kind == "toggle" and it.id ~= "master" then assert(not it.v, it.id .. " should start off") end
+    if it.kind == "toggle" and it.id ~= "master" then
+      assert(not it.v == not STARTS_ON[it.id], it.id .. (STARTS_ON[it.id] and " should start on" or " should start off"))
+    end
   end
 end
 assert(F0.items.health_mult.v == 1, "health multiplier should start at x1")
@@ -245,6 +250,38 @@ print("---- menu after opening ----"); print(mailbox_text())
 
 local F = require("features")
 local G = require("game")
+
+-- Quality of life rows (juiced.lua): crouch and the car camera start on and
+-- are written; switched off (or All tweaks off) they put the game's back.
+do
+  local J = require("juiced")
+  write_f32(0x827D7AB0, 0.5); write_f32(0x827AC218, 0.006); write_f32(0x827AC224, 0.012711); write_f32(0x827D9364, 3.0)
+  update(2)
+  assert(math.abs(read_f32(0x827D7AB0) - 4.0) < 1e-4, "crouch while moving not written")
+  assert(math.abs(read_f32(0x827AC218) - 0.012) < 1e-6 and math.abs(read_f32(0x827D9364) - 1.0) < 1e-4, "car camera not written")
+  -- FOV x1.2 on the follow camera, eased in.
+  write_u32(0x827D9778, 0); write_f32(0x827D9778 + 192, 60); write_f32(0x827AA6C8, 1 / 30)
+  for _ = 1, 40 do write_f32(0x827D9778 + 188, 60); update(1) end
+  assert(math.abs(read_f32(0x827D9778 + 188) - 72) < 0.05, "FOV not widened: " .. read_f32(0x827D9778 + 188))
+  F.items.crouch_moving.v = false; update(2)
+  assert(math.abs(read_f32(0x827D7AB0) - 0.5) < 1e-4, "crouch not put back")
+  F.enabled = false; update(2)
+  assert(math.abs(read_f32(0x827AC218) - 0.006) < 1e-6 and math.abs(read_f32(0x827D9364) - 3.0) < 1e-4, "All tweaks off didn't put the car camera back")
+  F.enabled = true; F.items.crouch_moving.v = true; update(2)
+  -- Save tweaks for next time: written, then read back over changed rows.
+  F.items.god.v = true; F.items.fov.v = 1.35
+  J.save_all()
+  local sf = io.open(TMP .. "/saved_tweaks.ini"); local text = sf:read("a"); sf:close()
+  assert(text:find("crouch_moving = true", 1, true) and text:find("fov = 1.35", 1, true) and text:find("god = true", 1, true), "saved_tweaks.ini incomplete")
+  assert(not text:find("wanted_police", 1, true) and not text:find("hide_hud", 1, true), "one-shot and change-only rows must not be saved")
+  F.items.god.v = false; F.items.fov.v = 1.0; F.items.crouch_moving.v = false
+  J.load_saved()
+  assert(F.items.god.v and math.abs(F.items.fov.v - 1.35) < 1e-9 and F.items.crouch_moving.v, "saved tweaks not read back")
+  assert(J.forget_saved():find("forgotten") and not io.open(TMP .. "/saved_tweaks.ini"), "forget didn't remove the file")
+  F.items.god.v, F.items.fov.v = false, 1.2
+  update(2)
+  print("quality of life rows: written, put back, saved and read back OK")
+end
 
 -- Toggle god mode (Player > Logic, first row) and check the bit.
 local MENU0 = require("menu")
@@ -1068,22 +1105,22 @@ do
   F.items.aim_button.v = 3; F.apply_aim_button(); assert(M.toggle() == false, "hold")
   F.items.aim_button.v = 2; F.apply_aim_button(); assert(M.toggle() == true, "toggle")
   F.items.aim_button.v = 1; F.apply_aim_button(); assert(M.toggle() == own, "own setting")
-  -- The aim rows are in the Weapons tab (no Aim tab), with the turning rows.
+  -- The aim rows are on Weapons > Aiming & switching (no Aim tab), with the
+  -- turning and weapon switch rows, Aim style first.
   local tabs, in_tab = {}, {}
   for _, cat in ipairs(F.categories) do
     tabs[cat.name] = true
     for _, it in ipairs(cat.items) do in_tab[it.id] = cat.name end
   end
-  assert(not tabs.Aim and in_tab.aim_style == "Weapons" and in_tab.aim_camera_page == "Weapons" and in_tab.fine_aim_zoom == "Weapons",
-    "aim rows not in Weapons")
+  assert(not tabs.Aim and in_tab.weapons_aiming == "Weapons" and not in_tab.aim_style, "aim rows not on Weapons > Aiming & switching")
   -- Precise Aim's camera rows are on their page; aim rows show only with their aim style.
   local cam = {}
   for _, it in ipairs(F.items.aim_camera_page.open().rows) do cam[it.id] = true end
   assert(cam.aim_camera and cam.aim_zoom and cam.aim_save and not in_tab.aim_camera, "Precise Aim camera page")
   local pos = {}
-  for i, it in ipairs(F.items.aim_camera_page and (function() for _, c in ipairs(F.categories) do if c.name == "Weapons" then return c.items end end end)()) do pos[it.id] = i end
-  assert(pos.aim_camera_page == pos.aim_style + 1 and pos.fine_aim_zoom == pos.aim_style + 2 and pos.fine_aim_spread == pos.aim_style + 3
-    and pos.give_weapon > pos.fine_aim_spread, "aim rows under Aim style")
+  for i, it in ipairs(F.items.weapons_aiming.open().rows) do pos[it.id] = i end
+  assert(pos.aim_style == 1 and pos.aim_camera_page == 2 and pos.fine_aim_zoom == 3 and pos.fine_aim_spread == 4
+    and pos.aim_button and pos.weapon_switch and pos.weapon_dpad, "aim rows under Aim style")
   local was = F.items.aim_style.v
   F.items.aim_style.v = 1
   assert(F.items.aim_camera_page.hidden() and F.items.fine_aim_zoom.hidden() and F.items.aim_button.hidden(), "aim rows hidden with the game's aim")
@@ -1099,14 +1136,16 @@ do
   -- Money and respect on the Player tab; active tweaks on the Settings tab; UI+ rows are switches.
   assert(in_tab.money == "Player" and in_tab.respect == "Player" and in_tab.status == "Settings", "Player / Settings rows")
   assert(F.items.low_health_fx.kind == "toggle" and not F.items.low_health_fx.v, "UI+ rows are switches, off")
-  -- The control preferences are a Controls page in Settings (next to itsMJQ's pages).
-  assert(in_tab.settings_controls == "Settings", "Controls page missing from Settings")
-  local ctl = F.items.settings_controls.open()
-  local in_ctl = {}
-  for _, it in ipairs(ctl.rows) do in_ctl[it.id] = true end
-  for _, id in ipairs({ "camera_turn", "aim_button", "precise_turning", "precise_aim_turn", "fine_aim_turn", "weapon_dpad", "weapon_tap" }) do
-    assert(in_ctl[id] and not in_tab[id], id .. " should be on the Controls page")
+  -- The control preferences sit with what they control: camera turn speed on
+  -- Visual > Camera, the aim and weapon switch rows on Weapons > Aiming &
+  -- switching. None of them is loose on a tab.
+  local function on_page(pg) local t = {} for _, it in ipairs(F.items[pg].open().rows) do t[it.id] = true end return t end
+  local cam_page, aim_page = on_page("visual_camera"), on_page("weapons_aiming")
+  assert(in_tab.visual_camera == "Visual" and cam_page.camera_turn and cam_page.fov, "Visual > Camera")
+  for _, id in ipairs({ "aim_button", "precise_turning", "precise_aim_turn", "fine_aim_turn", "weapon_dpad", "weapon_tap" }) do
+    assert(aim_page[id] and not in_tab[id], id .. " should be on Weapons > Aiming & switching")
   end
+  assert(not in_tab.camera_turn and not F.items.settings_controls or in_tab.settings_controls == nil, "no Controls page left")
   -- Camera turn speed writes the game's look sensitivity (both axes).
   write_f32(0x827D9778 + 312, 1.0); write_f32(0x827D9778 + 316, 1.0)
   F.items.camera_turn.v = 1.0

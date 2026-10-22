@@ -37,18 +37,18 @@ menu open. A short tap of Back still does the game's Back.
 
 | Tab | |
 |---|---|
-| Player | Pages: **Logic** (god mode, no clip, health multiplier, refill health, kill yourself, no ragdoll, run boost, high jump boost, game jump height, soft landing, quick crouch, swim speed, fall damage, infinite sprint, perfect aim), **Notoriety** (never wanted, Saints are enemies, police, gang and Saints notoriety, max notoriety, no cops, no gangs, never busted), **Bodyguards** (bodyguards, character homies, squad, dismiss homies, homie limit 1 to 10), **Voice Lines**; +$50,000, +5,000 respect |
-| Models | Play as any character model, live: switch, restore your Playa, reload your character; dialogue, animation fallback, cloth physics |
-| Customize | The game's character creator, free, as yourself: head, eyes, hair, body, skin, clothes, jewelry, tattoos, 10 saved looks and outfits, voice, facial expressions, movement styles (stance, walk, run, sprint, melee and throw run, combat, melee combat) |
-| Emotes | Poses and actions by the game's categories (with props), staged scenes (dance pairs, strip club, house party), repeat |
-| Weapons | Infinite ammo, no reload, rapid fire, heavy knockback, one-hit kill, rocket ammo, fire ammo, money gun (bills fly from your gun to where you shoot), explosive punches, weapon switch (keys 1 to 8, mouse wheel, D-pad, move with the weapon wheel open), aim style: the game's own, Precise Aim (over-the-shoulder camera, accuracy by stance, slow walk) or Fine Aim (zoom, slower turning, tighter shots), give any weapon (including the Pimp Slap), give every weapon, refill all ammo, a **Precise Aim camera** page (6 styles plus your own), Fine Aim's zoom and spread (aim rows show for the aim style you pick) |
-| Vehicles | Vehicle god mode, repair, tank mode, bulletproof glass, bulletproof tires, no explosion fling, extra car grip, nitrous in every vehicle, spawn any of 79 vehicles (plus 24 blinged versions), deliver to garage, customize vehicle (every part and colour), paint, destroy, extra top speed |
-| World | Weather, time of day, freeze time, clear / restore streets, ragdoll all NPCs, kill everyone, everybody dance or pose, spawn any of 188 people, spawn crowds, drop cash or weapons around you, cash drop chance |
-| Visual | Hide HUD, letterbox, free camera (fly it, or leave it in place and play from that shot, also in cutscenes), freeze world, filters, render mode (no sky, no textures, no people, people only), saturation |
+| Player | Pages: **Health & damage** (god mode, no ragdoll, health multiplier, fall damage, refill health, kill yourself), **Movement** (no clip, infinite sprint, run boost, high jump, game jump height, soft landing, quick crouch, crouch while moving, swim speed), **Notoriety**, **Bodyguards** (bodyguards, character homies, squad, dismiss, homie limit 1 to 10), **Unlocks** (music, collectibles, clothing); +$50,000, +5,000 respect |
+| Emotes | Poses and actions by the game's categories (with props), **Voice Lines**, staged scenes (dance pairs, strip club, house party), repeat |
+| Weapons | Infinite ammo, no reload, rapid fire, one-hit kill, heavy knockback, perfect aim, no melee lock-on, reload in cars; **Special ammo** (rocket, fire, money gun, explosive punches); **Aiming & switching** (aim style: the game's own, Precise Aim or Fine Aim, the Precise Aim camera page, Fine Aim's zoom and spread, aim button, turning while aiming, weapon switch with its D-pad and wheel tap); give any weapon (including the Pimp Slap), give every weapon, refill all ammo |
+| Vehicles | Vehicle god mode, repair; **Toughness** (tank mode, bulletproof glass and tires, no explosion fling), **Handling** (extra grip, nitrous everywhere, extra top speed), **Look** (customize vehicle, paint, secondary colour, brake lights when stopped), **Driving camera** (hold time, swing-back speed, follows the nose in a slide, free drive-by camera, no swing getting in, field of view at top speed); spawn any of 79 vehicles (plus 24 blinged versions), deliver to garage, destroy |
+| World | Weather, no fog, time of day, freeze time, clear / restore streets; **People** (spawn any of 188 people, crowds, everybody dance or pose, ragdoll all, kill everyone); **Drops** (cash or weapons around you, cash drop chance) |
+| Visual | Hide HUD, map arrow shows where you face, letterbox, filters, render mode, saturation; **Camera** (field of view, camera turn speed); **Free camera** (fly it, or leave it in place and play from that shot, also in cutscenes; freeze world); **UI+** (low health and low sprint visuals, low health sound echo) |
 | Teleport | Cribs, every store, every activity, teleport to map waypoint |
-| Settings | Master switch, show active tweaks; **Controls** (camera turn speed, aim button hold or toggle, Precise Aim turning, turn speed while aiming, weapon switch D-pad and wheel tap, shown when Weapon switch is on); **UI+** (low health and low sprint visuals, low health sound echo); **Unlocks** (music, collectibles, clothing); **Tweak Settings** (restore outfit, customization pose, animation fallback, cloth physics) |
+| Models | Play as any character model, live: switch, restore your Playa, reload your character; dialogue, animation fallback, cloth physics |
+| Customize | The game's character creator, free, as yourself: head, eyes, hair, body, skin, clothes, jewelry, tattoos, 10 saved looks and outfits, voice, facial expressions, movement styles; restore outfit, customization pose |
+| Settings | Master switch, show active tweaks, **save tweaks for next time**, forget saved tweaks; **Game & saving** (skip intro, load last save, quick save, pause cutscenes, no tutorial popups) |
 
-Everything starts off. Every menu row has a help line. See
+Cheats start off; a few quality-of-life rows start on (crouch while moving, field of view x1.2, the driving camera), as `mod.ini` sets. **Settings > Save tweaks for next time** makes the menu start the way you've set it. Every menu row has a help line. See
 `SRTweakMenu/CHANGELOG.md` for what changed.
 
 ## Settings
@@ -75,6 +75,10 @@ SR Tweak Menu already includes them.
 ## Credits
 
 - Saints Reborn and its mod loader by Whompay. Saints Row by Volition.
+- The quality-of-life rows follow ideas from the Saints Row 2
+  [Juiced Patch](https://github.com/kobraworksmodding/Saints-Row-2-Juiced-Patch)
+  by Kobraworks Modding (Soaa, Tervel, Clippy95, Scanti and contributors);
+  they're written for Saints Row 1 and contain none of its code.
 - **itsMJQ**: the Models and Customize tabs, movement styles, the emotes
   pages, voice lines and voices, character homies, customize vehicle, store
   and activity teleports, unlocks, render modes, the UI+ screen effects, the

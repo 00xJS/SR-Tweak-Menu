@@ -22,6 +22,9 @@ SRTweakMenu/player_outfit.txt
 SRTweakMenu/player_outfit_last.txt
 SRTweakMenu/player_voice.txt
 SRTweakMenu/saved_looks.txt
+# the Quality of life rows' files: saved tweaks and the last quick save made
+SRTweakMenu/saved_tweaks.ini
+SRTweakMenu/quicksave.dat
 # made from the game's HUD sheets: game data, never in the repository
 SRTweakMenu/hud_images.bin
 # the copy of itsMJQ's version this was merged from

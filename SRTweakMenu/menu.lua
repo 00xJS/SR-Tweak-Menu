@@ -563,6 +563,7 @@ end
 -- HELP_WIDTH characters a line; a sentence longer than that breaks at a
 -- space.
 local HELP_WIDTH = 90
+local STATUS_LINES = 4
 local function wrap_help(text)
   local out, line = {}, ""
   local function flush() if line ~= "" then out[#out + 1] = line; line = "" end end
@@ -594,10 +595,11 @@ function M.render(tick)
   local lines = {}
   local tabs = {}
   for i, cat in ipairs(F.categories) do
-    if shown(cat) then tabs[#tabs + 1] = (i == M.tab) and ("[ " .. cat.name .. " ]") or ("  " .. cat.name .. "  ") end
+    if shown(cat) then tabs[#tabs + 1] = (i == M.tab) and ("[" .. cat.name .. "]") or cat.name end
   end
+  -- (tight, so all ten tabs fit the same 90 characters as the help)
   lines[#lines + 1] = "SR TWEAK MENU" .. (F.enabled and "" or "   (all tweaks OFF)")
-  lines[#lines + 1] = table.concat(tabs, " ")
+  lines[#lines + 1] = table.concat(tabs, "  ")
   lines[#lines + 1] = ""
   local cat = F.categories[M.tab]
   local list = view_rows()
@@ -628,7 +630,14 @@ function M.render(tick)
   else
     lines[#lines + 1] = "Up/Down move   Left/Right adjust   Enter select   PgUp/PgDn tab   " .. KEY.open .. " close"
   end
-  if M.status ~= "" and tick < M.status_until then lines[#lines + 1] = M.status end
+  -- Messages wrap like the help (a long "Show active tweaks" list ran off
+  -- the screen), at most STATUS_LINES lines.
+  if M.status ~= "" and tick < M.status_until then
+    local wrapped = wrap_help(M.status)
+    for i = 1, math.min(#wrapped, STATUS_LINES) do
+      lines[#lines + 1] = (i == STATUS_LINES and #wrapped > STATUS_LINES) and (wrapped[i]:sub(1, HELP_WIDTH - 4) .. " ...") or wrapped[i]
+    end
+  end
   mailbox_write(table.concat(lines, "\n"))
 end
 

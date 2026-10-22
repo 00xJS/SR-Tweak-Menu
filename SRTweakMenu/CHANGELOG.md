@@ -1,5 +1,53 @@
 # SR Tweak Menu - changes
 
+## 2.2
+
+Quality of life rows after the Saints Row 2 Juiced Patch (Kobraworks
+Modding), written for Saints Row 1 (no Juiced code). They were the separate
+SR Juiced mod; untick it if you had it.
+
+- Player: **Crouch while moving** (keyboard too; on by default) and **No
+  melee lock-on**.
+- Vehicles, **Driving camera**: camera hold time (moving and standing
+  still), swing-back speed, **Camera follows the nose** in a handbrake slide
+  and **Free drive-by camera** (both on by default), no camera swing getting
+  in, field of view at top speed. **Driving**: brake lights when stopped,
+  reload in cars (R).
+- Visual: **Field of view** (x1.2 by default; eases in, scopes and
+  cutscenes keep the game's own), no fog, map arrow shows where you face.
+- Settings: **Save tweaks for next time** (every row starts the way it is
+  now, in `saved_tweaks.ini`) and **Forget saved tweaks**. **Start-up and
+  saving**: skip intro, load last save (any key or button in the wait stays
+  on the menu), quick save (F12), pause cutscenes (Back / Tab), no tutorial
+  popups.
+- Every one has a start value in `mod.ini`.
+
+**New layout** (`layout.lua` places every row; ids, `mod.ini` keys and saved
+tweaks are unchanged):
+
+- Tabs: Player, Emotes, Weapons, Vehicles, World, Visual, Teleport, then
+  Models, Customize and Settings.
+- Rows go where they act, not where they came from: the everyday switches
+  on the tab, the rest on pages named by what they change.
+- Player: Logic is split into **Health & damage** and **Movement**;
+  **Unlocks** moved here from Settings; Voice Lines moved to Emotes.
+- Weapons: **Special ammo** (rocket, fire, money gun, explosive punches) and
+  **Aiming & switching** (aim style and its camera, the aim button and
+  turning, weapon switch: the rows from Settings > Controls). Perfect aim
+  moved here from Logic.
+- Vehicles: **Toughness**, **Handling**, **Look** (customize, paint, brake
+  lights) and **Driving camera** pages; god mode, repair, spawn, garage and
+  destroy stay on the tab.
+- World: **People** and **Drops** pages; No fog sits by Weather.
+- Visual: **Camera** (field of view, camera turn speed), **Free camera**
+  (with freeze world) and **UI+** (from Settings).
+- Models gets Animation fallback and Cloth physics, Customize gets Restore
+  outfit and Customization pose (from Settings > Tweak Settings).
+- Settings: All tweaks, show active tweaks, save / forget saved tweaks and a
+  **Game & saving** page. The Controls and Tweak Settings pages are gone.
+- Messages (Show active tweaks and others) wrap over up to 4 lines instead
+  of running off the screen, and the tab bar is tighter so all ten tabs fit.
+
 ## 2.1
 
 - Spawn vehicle lists the game's own blinged versions after each plain car

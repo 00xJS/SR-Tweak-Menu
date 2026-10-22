@@ -15,6 +15,15 @@
 
 local G = require("game")
 local F = require("features")
+-- Quality-of-life rows after the SR2 Juiced Patch: added to their tabs, then
+-- the tweaks saved from the Settings tab put on every row, before anything
+-- below reads a row's start value.
+local JUICED = require("juiced")
+JUICED.setup(F)
+-- Where every row is shown: tab order, tabs and pages (layout.lua).
+require("layout").apply(F)
+JUICED.load_saved()
+JUICED.install()
 local MENU = require("menu")
 local WAYPOINT = require("waypoint")
 local HOMIES = require("homies")
@@ -383,12 +392,14 @@ end)
 -- ------------------------------------------------------------ the update
 wml.hook(G.UPDATE, function(ctx)
   FREECAM.before_update()
+  JUICED.before(ctx)
   ctx:call_original()
   tick = tick + 1
   last_update = os.clock()
   MENU.input(ctx, tick)
   F.set_menu_open(MENU.is_open())
   F.update(ctx)
+  JUICED.after(ctx)
   WAYPOINT.enabled = F.on("waypoint_auto") and not WAYPOINT.standalone
   HOMIES.limit = F.enabled and F.items.homies.v or 0
   if F.camera_turn_start and F.camera_turn_start > 0 and G.player() ~= 0 then
