@@ -41,7 +41,7 @@ local TABS = {
     page("vehicles_look", "Look", "Customize the car, paint it, and brake lights when stopped.",
       { "vehicle_custom", "paint", "paint2", "brake_lights" }),
     page("vehicles_camera", "Driving camera", "How long the camera holds, how fast it swings back, slides, drive-bys and the speed field of view.",
-      { "car_cam_hold", "car_cam_hold_stopped", "car_cam_follow", "car_cam_nose", "driveby_cam", "no_entry_swing", "speed_fov" }),
+      { "car_cam_reset", "car_cam_reset_stopped", "car_cam_follow", "car_cam_nose", "driveby_cam", "no_entry_swing", "speed_fov" }),
     "spawn_vehicle", "remove_vehicles", "garage", "boom" } },
   { "World", {
     "weather", "no_fog", "hour", "freeze_clock", "clear", "restore_traffic",

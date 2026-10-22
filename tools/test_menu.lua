@@ -212,7 +212,7 @@ assert(hooks[0x824470D0], "damage hook missing")
 -- Everything starts off: toggles off, sliders at the game's own value -
 -- except the Quality of life rows meant to be on (mod.ini says so).
 local F0 = require("features")
-local STARTS_ON = { crouch_moving = true, car_cam_nose = true, driveby_cam = true, car_free_cam = true }
+local STARTS_ON = { crouch_moving = true, car_free_cam = true }
 for _, cat in ipairs(F0.categories) do
   for _, it in ipairs(cat.items) do
     if it.kind == "toggle" and it.id ~= "master" then

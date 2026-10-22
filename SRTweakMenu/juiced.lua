@@ -184,14 +184,28 @@ end
 
 -- True while the camera should keep its own direction (called from the
 -- swing, inside the camera update).
+-- Set in J.setup: the old SR Juiced mod is ticked; this menu's version.
+local old_juiced_seen, menu_version = false, "?"
+
 local function free_camera()
   local p = G.player()
   local handle = p ~= 0 and read_u32(p + G.P.VEHICLE) or 0
   if handle == 0 then free.on, free.last = false, nil return false end
+  if not free.reported then
+    -- Once, even without debug: what the driving camera is using, for
+    -- anyone reporting that it still swings back (send mods/wml.log).
+    free.reported = true
+    local function fmt(v) return v >= HOLD_ALWAYS and "Always" or string.format("%.1f s", v) end
+    wml.log(string.format("juiced: driving camera (SR Tweak Menu %s): free camera %s, resets after %s / stopped %s, follows the nose %s, drive-by camera %s, swing-back x%.2f, game hold %.1f / %.1f s%s",
+      menu_version, on("car_free_cam") and "on" or "off",
+      fmt(F.items.car_cam_reset.v), fmt(F.items.car_cam_reset_stopped.v), on("car_cam_nose") and "on" or "off",
+      on("driveby_cam") and "on" or "off", F.items.car_cam_follow.v, read_f32(HOLD_TIME), read_f32(HOLD_TIME_STOPPED),
+      old_juiced_seen and ", OLD SR JUICED MOD TICKED" or ""))
+  end
   if math.abs(read_f32(G.CAMERA + CAM_TURN_H)) > 1e-4 or math.abs(read_f32(G.CAMERA + CAM_TURN_V)) > 1e-4 then
     free.on, free.last = true, now()
   end
-  local row = car_speed2(handle) < STOPPED_SPEED2 and F.items.car_cam_hold_stopped or F.items.car_cam_hold
+  local row = car_speed2(handle) < STOPPED_SPEED2 and F.items.car_cam_reset_stopped or F.items.car_cam_reset
   if row.v >= HOLD_ALWAYS then return true end
   if not free.on then return false end
   if now() - free.last >= row.v then free.on = false end
@@ -508,8 +522,59 @@ local function keep(addr, value)
   if math.abs(read_f32(addr) - value) > 1e-4 then write_f32(addr, value) end
 end
 
+-- The old standalone SR Juiced mod, if it's still ticked, keeps writing its
+-- own driving camera values (a 1 s hold that locks the camera to the car and
+-- pulls it back), fighting these rows. Spotted in the loader's mod list.
+local function old_juiced_ticked()
+  local f = io.open(wml.mod_folder .. "/../modlist.ini", "r")
+  if not f then return false end
+  local found = false
+  for line in f:lines() do
+    if line:match("^%s*%+%s*SRJuiced%s*$") then found = true end
+  end
+  f:close()
+  return found
+end
+
+-- Free camera in cars doesn't work together with Camera follows the nose
+-- (which steers the swing back the free camera turns off) or Free drive-by
+-- camera (which does the same job, in drive-bys only): switching one on
+-- switches the other(s) off, and says so.
+local CAMERA_RIVALS = { "car_cam_nose", "driveby_cam" }
+local function names(list) return table.concat(list, " and ") end
+local function free_camera_change(ctx, p, v, it)
+  if not it.v then return nil end
+  local off = {}
+  for _, id in ipairs(CAMERA_RIVALS) do
+    local r = F.items[id]
+    if r.v then r.v = false; off[#off + 1] = r.label end
+  end
+  if #off == 0 then return nil end
+  return it.label .. " on: " .. names(off) .. (#off > 1 and " are" or " is") .. " off (the free camera covers them)"
+end
+local function rival_change(ctx, p, v, it)
+  local free_row = F.items.car_free_cam
+  if not it.v or not free_row.v then return nil end
+  free_row.v = false
+  if free_row.off then pcall(free_row.off, ctx, p, v, free_row) end
+  return it.label .. " on: " .. free_row.label .. " is off (they don't work together)"
+end
+
 function J.setup(features)
   F = features
+  J.old_juiced = old_juiced_ticked()
+  old_juiced_seen = J.old_juiced
+  local f = io.open(wml.mod_folder .. "/mod.ini", "r")
+  if f then
+    for line in f:lines() do
+      local v = line:match("^%s*version%s*=%s*(%S+)")
+      if v then menu_version = v break end
+    end
+    f:close()
+  end
+  if J.old_juiced then
+    wml.log("juiced: the old SR Juiced mod is ticked too - untick it in the mod loader; SR Tweak Menu has it built in and the two fight over the camera")
+  end
   local reload_key = key_setting("car_reload_key", "R")
   local save_key = key_setting("quick_save_key", "F12")
   J.reload_key, J.save_key = reload_key, save_key
@@ -529,22 +594,23 @@ function J.setup(features)
   F.add_rows("Vehicles", nil, {
     { id = "qol_car_camera", label = "Driving camera", kind = "header" },
     { id = "car_free_cam", label = "Free camera in cars", kind = "toggle", needs = "none", v = S("car_free_camera", true),
-      help = "Move the camera and it keeps looking that way: the car turns under it, it doesn't turn with the car or reset.",
+      help = "Move the camera and it keeps looking that way: the car turns under it. Switches off follows the nose and the drive-by camera.",
+      change = free_camera_change,
       update = function() keep(HOLD_TIME, 0); keep(HOLD_TIME_STOPPED, 0) end,
       off = function()
         -- Back to the reset rows' times, or the game's own with All tweaks off.
         local function back(row) return (F.enabled and row.v ~= row.default) and hold_seconds(row.v) or row.default end
-        write_f32(HOLD_TIME, back(F.items.car_cam_hold))
-        write_f32(HOLD_TIME_STOPPED, back(F.items.car_cam_hold_stopped))
+        write_f32(HOLD_TIME, back(F.items.car_cam_reset))
+        write_f32(HOLD_TIME_STOPPED, back(F.items.car_cam_reset_stopped))
         free.on = false
       end },
-    { id = "car_cam_hold", label = "Camera resets after", kind = "value", needs = "none", default = 3.0, min = 0.5, max = HOLD_ALWAYS,
-      step = 0.5, fmt = fmthold, v = S("car_camera_hold", HOLD_ALWAYS),
+    { id = "car_cam_reset", label = "Camera resets after", kind = "value", needs = "none", default = 3.0, min = 0.5, max = HOLD_ALWAYS,
+      step = 0.5, fmt = fmthold, v = S("car_camera_reset_after", HOLD_ALWAYS),
       help = "How long after you stop moving it before the camera follows the car again. Always: never, fully free (game: 3 s).",
       update = function(ctx, p, v, it) if not on("car_free_cam") then keep(HOLD_TIME, hold_seconds(it.v)) end end,
       off = function(ctx, p, v, it) if not on("car_free_cam") then write_f32(HOLD_TIME, it.default) end end },
-    { id = "car_cam_hold_stopped", label = "Camera resets after, stopped", kind = "value", needs = "none", default = 0.5, min = 0.5,
-      max = HOLD_ALWAYS, step = 0.5, fmt = fmthold, v = S("car_camera_hold_stopped", HOLD_ALWAYS),
+    { id = "car_cam_reset_stopped", label = "Camera resets after, stopped", kind = "value", needs = "none", default = 0.5, min = 0.5,
+      max = HOLD_ALWAYS, step = 0.5, fmt = fmthold, v = S("car_camera_reset_after_stopped", HOLD_ALWAYS),
       help = "The same while the car stands still (game: 0.5 s).",
       update = function(ctx, p, v, it) if not on("car_free_cam") then keep(HOLD_TIME_STOPPED, hold_seconds(it.v)) end end,
       off = function(ctx, p, v, it) if not on("car_free_cam") then write_f32(HOLD_TIME_STOPPED, it.default) end end },
@@ -555,10 +621,12 @@ function J.setup(features)
         keep(SWING_FORWARD, SWING_FORWARD_GAME * it.v); keep(SWING_REVERSE, SWING_REVERSE_GAME * it.v)
       end,
       off = function() write_f32(SWING_FORWARD, SWING_FORWARD_GAME); write_f32(SWING_REVERSE, SWING_REVERSE_GAME) end },
-    { id = "car_cam_nose", label = "Camera follows the nose", kind = "toggle", needs = "none", v = S("car_camera_follows_nose", true),
-      help = "The camera stays behind the car in a handbrake slide instead of swinging towards the slide." },
-    { id = "driveby_cam", label = "Free drive-by camera", kind = "toggle", needs = "none", v = S("drive_by_free_camera", true),
-      help = "During a drive-by the camera stays where you aim instead of swinging back behind the car." },
+    { id = "car_cam_nose", label = "Camera follows the nose", kind = "toggle", needs = "none", v = S("car_camera_follows_nose", false),
+      change = rival_change, keep_saved = true,
+      help = "The camera stays behind the car in a handbrake slide instead of swinging towards the slide. Not with the free camera." },
+    { id = "driveby_cam", label = "Free drive-by camera", kind = "toggle", needs = "none", v = S("drive_by_free_camera", false),
+      change = rival_change, keep_saved = true,
+      help = "During a drive-by the camera stays where you aim instead of swinging back behind the car. Not with the free camera." },
     { id = "no_entry_swing", label = "No camera swing getting in", kind = "toggle", needs = "none", v = S("no_car_entry_swing", false),
       help = "The camera doesn't swing round behind you as you get into a car.",
       update = function() if read_u8(ENTER_SWING) ~= 0 then write_u8(ENTER_SWING, 0) end end,
@@ -638,7 +706,7 @@ local SAVED = wml.mod_folder .. "/saved_tweaks.ini"
 local function can_save(it)
   if not it.id or it.nosave or it.oneshot then return false end
   if it.kind ~= "toggle" and it.kind ~= "value" then return false end
-  if it.saved_now or it.id == "master" or not it.change then return true end
+  if it.saved_now or it.keep_saved or it.id == "master" or not it.change then return true end
   return (it.update or it.pbits or it.p212 or it.vbits_a or it.vbits_b or it.byte or it.bits or it.float) ~= nil
 end
 
@@ -714,6 +782,14 @@ function J.load_saved()
     end
   end
   if n > 0 then wml.log("juiced: " .. n .. " saved tweaks applied") end
+  if F.items.car_free_cam.v then
+    for _, id in ipairs(CAMERA_RIVALS) do
+      if F.items[id].v then
+        F.items[id].v = false
+        wml.log("juiced: " .. F.items[id].label .. " left off: Free camera in cars is on")
+      end
+    end
+  end
 end
 
 -- ================================================================ hooks
@@ -818,6 +894,10 @@ end
 -- After the game's update (and the menu's own rows).
 function J.after(ctx)
   if game_state() == STATE_LEGAL then return end
+  if J.old_juiced and G.player() ~= 0 then
+    J.old_juiced = false
+    G.hud("Untick the old SR Juiced mod in the mod loader: SR Tweak Menu has it built in")
+  end
   startup_after(ctx)
   quicksave_after(ctx)
   if J.reload_pressed then

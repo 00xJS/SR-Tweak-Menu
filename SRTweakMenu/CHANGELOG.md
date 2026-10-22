@@ -1,5 +1,25 @@
 # SR Tweak Menu - changes
 
+## 2.4.2
+
+- The camera reset rows have new names in `mod.ini`
+  (`car_camera_reset_after`, `car_camera_reset_after_stopped`) and in
+  saved tweaks, so a `mod.ini` or saved tweaks from 2.2 / 2.3 (a 1 second
+  hold, which made the camera go back to following right away) can't
+  override the free camera any more. Both start at Always.
+- A warning (log and on screen) when the old standalone SR Juiced mod is
+  still ticked in the mod loader: it fights these rows over the camera.
+- Free camera in cars, Camera follows the nose and Free drive-by camera
+  exclude each other: switching the free camera on switches the other two
+  off, switching either of them on switches the free camera off, with a
+  message saying so. Follows the nose and the drive-by camera now start off;
+  if `mod.ini` or saved tweaks have them on with the free camera, the free
+  camera wins.
+- The first time you drive, `mods/wml.log` gets one line (even with debug
+  off) with the driving camera settings in effect, the menu's version and
+  whether the old SR Juiced mod is ticked - send it if the camera still
+  swings back.
+
 ## 2.4.1
 
 - Free camera in cars with **Camera resets after** at Always (the default)
