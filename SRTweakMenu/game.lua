@@ -111,6 +111,34 @@ G.SET_COLOUR     = 0x8254CA48  -- (state, part, colour slot, colour record)
 -- explosion at +144. A rocket keeps its weapon pointer at +208 while it flies.
 G.FIRE           = 0x82470A50  -- (human, target, r5, bool): fires the equipped gun
 G.WEAPON_INFOS, G.WEAPON_COUNT = 0x832ABCA8, 0x832ABCAC   -- *: 520 bytes each
+-- One bullet's ray (per pellet): writes where the shot stopped (the last
+-- solid hit, or the end of its range) into r3.
+G.BULLET_RAY     = 0x8246FD18  -- (out pos*, out handle*, shooter, info, start*, end*, r9)
+
+-- Pickups on the ground. Every drop goes through ITEM_CREATE with an
+-- 80-byte record: +0 flags (0x90 = dropped, deleted when taken; 0x80|0x10
+-- also keeps the player from taking it for a second), +4 item info (a
+-- weapon info's +28), +8 pos, +20 rows (3x3), +56 owner (255 = work it
+-- out), +60 physics group, +64 mass (< 0 = the item's), +68 rounds (-1 =
+-- random). The game keeps at most 50 cash pickups and 15 other drops
+-- lying around, deleting the oldest.
+G.CASH_AT        = 0x82408C58  -- (pos*, rows*, 0, pop, 255, f1 = dollars) -> item: a bill on the ground
+G.ITEM_CREATE    = 0x82408190  -- (record*) -> item or 0; item+116 physics body, +220 ammo
+G.ITEM_POP       = 0x82406D48  -- (item): the little hop a dropped item makes
+G.SET_VELOCITY   = 0x82253F10  -- (body handle, vec3*)
+G.ROWS_ID        = 0x828398C4  -- the game's identity 3x3
+G.PHYS_GROUP     = 0x827E79EC  -- *: the physics group drops use
+-- Chance (0..1) that a dead civilian / gang member drops cash, read at
+-- every death; the game's table sets 0.25 for both.
+G.CASH_CHANCE    = 0x838F8520  -- f32 civilians, +4 gang members
+
+-- Explosions (explosions.xtbl defs), as the console's `explosion` makes one:
+-- EXPLOSION(def, owner, 0, rows*, pos*, 0, 0, 0) + stack {+84 u32, +92 u32,
+-- +103 u8, +111 u8} all 0. The owner gets the kills.
+G.EXPLOSION_DEF  = 0x82138FB0  -- (name*) -> def or 0
+G.EXPLOSION      = 0x82138AE8
+-- Every melee hit lands here, whatever was hit (person, car, door).
+G.MELEE_HIT      = 0x824560D8  -- (target object, attacker, ...)
 -- Weapon record fields read at every shot: +20 class (3 = shotgun), +122 u16
 -- Refire_Delay (ms), +304 f32 Ragdoll_Force_Shoot (the push of a killing shot).
 G.W = { CLASS = 20, REFIRE = 122, FORCE = 304, SHOTGUN = 3 }
@@ -343,7 +371,7 @@ G.POSE_BUILD = 0x826F1F78
 G.TEAM_ID = { Playas = 0, ["Vice Lords"] = 1, ["Los Carnales"] = 2, Rollerz = 3, Police = 6, Civilian = 7, ["Neutral Gang"] = 8 }
 
 -- Vehicles made in the world (the co-op mod creates cars this way).
-G.VEHICLE_CREATE = 0x82569700  -- (3, 2, info index, pos*, rows*, 0, 0, 0, f1 = 0) + stack {+84 u32 0, +95 u8 0, +100 u32 0} -> handle
+G.VEHICLE_CREATE = 0x82569700  -- (3, 2, info index, pos*, rows*, 0, 0, variant name* or 0, f1 = 0) + stack {+84 u32 0, +95 u8 0, +100 u32 0} -> handle
 G.VEHICLE_FROM_HANDLE = 0x82569630  -- (handle) -> vehicle object
 G.VEHICLE_MODEL_REF = 0x82532360  -- (vehicle, 5): the game's own model request for a car; recorded at
                                   -- vehicle+50304 so the car gives the reference back when it goes

@@ -18,6 +18,36 @@ local CHARACTERS = require("characters")
 local VARIANTS = require("variants")
 -- Alphabetical by the name shown in the menu.
 table.sort(VEHICLES, function(a, b) return a[2]:lower() < b[2]:lower() end)
+-- The game's own blinged versions (variant names in each car's table; never
+-- seen in traffic), listed after the plain car. The Hollywood's are the
+-- Blinged Out Ride mode's top level in its four colours.
+-- VEHICLES.spawn is the Spawn vehicle list: { xtbl name, display name, group,
+-- special type, variant }.
+do
+local BLINGED = {
+  car_2dr_compact06 = { "Blinged" }, car_2dr_exolux01 = { "Blinged" },
+  car_4dr_luxury05 = { "Bling" }, suv_4dr_03 = { "Bling" }, suv_4dr_luxury05 = { "Bling" },
+  car_2dr_luxury04 = { "Bling" }, car_2dr_muscle01 = { "Bling" }, car_2dr_muscle02 = { "Bling" },
+  car_2dr_sports04 = { "Bling" }, car_2dr_standard02 = { "Bling" }, car_4dr_lowrider01 = { "Bling" },
+  car_4dr_luxury03 = { "Bling" }, car_4dr_luxury04 = { "Bling" }, car_4dr_std01 = { "Bling" },
+  car_4dr_std06 = { "Bling" }, minivan_4dr_02 = { "Bling" }, sp_hearse01 = { "Bling" },
+  suv_4dr_05 = { "Bling" }, suv_4dr_luxury01 = { "Bling" }, wagon_4dr_sprt01 = { "Bling" },
+  car_4dr_classic01 = { "BlingedBlue4", "Blue", "BlingedPurple4", "Purple", "BlingedRed4", "Red", "BlingedYellow4", "Yellow" },
+}
+local SPAWN_VEHICLES = {}
+for _, v in ipairs(VEHICLES) do
+  SPAWN_VEHICLES[#SPAWN_VEHICLES + 1] = v
+  local b = BLINGED[v[1]:lower()]
+  if b and #b == 1 then
+    SPAWN_VEHICLES[#SPAWN_VEHICLES + 1] = { v[1], v[2] .. " Blinged", v[3], v[4], b[1] }
+  elseif b then
+    for i = 1, #b, 2 do
+      SPAWN_VEHICLES[#SPAWN_VEHICLES + 1] = { v[1], v[2] .. " Blinged " .. b[i + 1], v[3], v[4], b[i] }
+    end
+  end
+end
+VEHICLES.spawn = SPAWN_VEHICLES
+end
 local WAYPOINT = require("waypoint")
 local HOMIES = require("homies")
 local FREECAM = require("freecam")
@@ -211,9 +241,12 @@ local WEAPONS = {
   { "knife", "Knife" }, { "sniper_rifle", "McManus" }, { "molotov", "Molotovs" }, { "nightstick", "Nightstick" },
   { "beretta", "NR4" }, { "pimpcane", "Pimp Cane" }, { "pipe_bomb", "Pipe Bombs" }, { "magnum", "Shepherd .44" },
   { "mac10", "T3K Urban" }, { "tire_iron", "Tire Iron" }, { "twelve_gauge", "Tombstone" }, { "glock", "Vice 9" },
-  { "pump_action_shotgun", "12 Gauge" },
+  { "pump_action_shotgun", "12 Gauge" }, { "pimp_slap", "Pimp Slap" },
 }
 table.sort(WEAPONS, function(a, b) return a[2]:lower() < b[2]:lower() end)
+-- Drop weapons around me: a random mix, then every weapon.
+WEAPONS.drop = { { "random", "Random mix" } }
+for _, w in ipairs(WEAPONS) do WEAPONS.drop[#WEAPONS.drop + 1] = w end
 F_WEAPON_QUEUE = {}
 
 local WEATHER = { "Default", "Clear Skies", "Partly Cloudy", "Light Rain", "Medium Rain", "Heavy Rain", "Overcast", "Thunderstorm" }
@@ -622,6 +655,16 @@ category("Weapons", {
     off = function() F.restore_guns() end },
   { id = "fire_ammo", label = "Fire ammo", kind = "toggle",
     help = "Enemies you shoot catch fire." },
+  { id = "money_gun", label = "Money gun", kind = "toggle",
+    help = "Your shots fire bills that land where the bullet hits; pick them up after. Not with Rocket ammo." },
+  { id = "money_gun_cash", label = "Money gun bill ($)", kind = "value", needs = "none", default = 100, min = 100, max = 10000, step = 100,
+    fmt = fmtint, oneshot = true, hidden = function() return not F.items.money_gun.v end,
+    help = "How many dollars each bill from the money gun is worth. Default 100." },
+  { id = "explosive_punch", label = "Explosive punches", kind = "toggle",
+    help = "Punches and melee hits blow up whoever or whatever you hit, cars too. You're shielded from your own blast." },
+  { id = "punch_blast", label = "Punch blast", kind = "choice", needs = "none",
+    options = { "Small", "Grenade", "Rocket", "Huge" }, v = 2, hidden = function() return not F.items.explosive_punch.v end,
+    help = "How big the explosive punch blast is." },
   { id = "give_weapon", label = "Give weapon", kind = "list", items = WEAPONS,
     help = "Adds the selected weapon with 500 rounds.",
     run = function(ctx, p, _, it)
@@ -888,11 +931,11 @@ category("Vehicles", {
     end },
   { id = "boom", label = "Destroy vehicle", kind = "action", needs = "vehicle", help = "",
     run = function(ctx) G.console(ctx, "boom"); return "Boom" end },
-  { id = "spawn_vehicle", label = "Spawn vehicle", kind = "list", items = VEHICLES, needs = "player",
+  { id = "spawn_vehicle", label = "Spawn vehicle", kind = "list", items = VEHICLES.spawn, needs = "player",
     help = "",
     run = function(ctx, p, _, it)
-      local veh = VEHICLES[it.v]
-      return F.spawn_vehicle(ctx, p, veh[1]) and ("Spawned " .. veh[2]) or ("Could not spawn " .. veh[2])
+      local veh = VEHICLES.spawn[it.v]
+      return F.spawn_vehicle(ctx, p, veh[1], veh[5]) and ("Spawned " .. veh[2]) or ("Could not spawn " .. veh[2])
     end },
   { id = "remove_vehicles", label = "Remove spawned vehicles", kind = "action", needs = "player", help = "",
     run = function(ctx) return F.remove_spawned(ctx, F.spawned_vehicles, "vehicle") end },
@@ -971,6 +1014,21 @@ category("World", {
     run = function(ctx) F.queue_crowd(40); return "A crowd is forming" end },
   { id = "remove_people", label = "Remove spawned people", kind = "action", needs = "player", help = "",
     run = function(ctx) return F.remove_spawned(ctx, F.spawned_people, "person") end },
+  { id = "cash_rain", label = "Drop cash around me", kind = "action", needs = "player",
+    help = "Scatters 10 bills of $10 to $500 on the ground around you.",
+    run = function() F.queue_drops("cash", 10); return "Making it rain" end },
+  { id = "weapon_rain", label = "Drop weapons around me", kind = "list", items = WEAPONS.drop, needs = "player",
+    help = "Drops 6 of the picked weapon, or a random mix, on the ground around you.",
+    run = function(ctx, p, _, it)
+      local w = WEAPONS.drop[it.v]
+      F.queue_drops(w[1], 6)
+      return "Dropped: " .. w[2]
+    end },
+  { id = "cash_drop_chance", label = "Cash drop chance", kind = "value", default = 25, min = 0, max = 100, step = 5,
+    fmt = function(v) return string.format("%d%%", v) end,
+    help = "How often people and gang members drop cash when they die. The game's own is 25%.",
+    update = function() F.set_drop_chance(F.items.cash_drop_chance.v / 100) end,
+    off = function() F.set_drop_chance(nil) end },
 })
 
 -- ================================================================ Visual
@@ -1649,6 +1707,8 @@ function F.update(ctx)
   if F.repeating then F.repeat_action(ctx, p) end
   if F.looping then F.loop_action(ctx, p) end
   if p ~= 0 and #burn_queue > 0 then burn_queued(ctx, p) end
+  if p ~= 0 then F.drops_update(ctx, p) end
+  if p ~= 0 then F.punch_update(ctx, p) end
   if next(patched) and not F.on("rocket_ammo") then F.restore_guns() end
   if F.posing then
     if p == 0 or read_f32(p + G.P.HEALTH) <= 0 or G.screen_up() or G.in_cutscene() then F.release_player(ctx, p) else F.hold_pose(ctx, p) end
@@ -1937,7 +1997,8 @@ local function spot_ahead(p, dist, lift)
 end
 
 -- Drops a vehicle in front of the player: create, model request, place.
-function F.spawn_vehicle(ctx, p, name)
+-- variant: one of the car's named versions (nil = the game's random pick).
+function F.spawn_vehicle(ctx, p, name, variant)
   local index = G.call(ctx, G.VEHICLE_INDEX, { G.cstr(ctx, name, 0) })
   if index == 0xFFFFFFFF then return false end
   make_room(ctx, F.spawned_vehicles, MAX_SPAWNED_VEHICLES)
@@ -1946,7 +2007,9 @@ function F.spawn_vehicle(ctx, p, name)
   local rows = G.floats(ctx, { 1, 0, 0, 0, 1, 0, 0, 0, 1 }, 16)
   -- Creation type 7 is how the game's own vehicle cheat and mission scripts
   -- make cars (3 is the co-op mod's remote copy, which came without nitrous).
-  local handle = G.call(ctx, G.VEHICLE_CREATE, { 7, 2, index, pos, rows, 0, 0, 0 }, 0.0,
+  -- The last argument is the variant's name, as missions pass it.
+  local vname = variant and G.cstr(ctx, variant, 1) or 0
+  local handle = G.call(ctx, G.VEHICLE_CREATE, { 7, 2, index, pos, rows, 0, 0, vname }, 0.0,
     { { 84, 4, 0 }, { 95, 1, 0 }, { 100, 4, 0 } })
   if handle == 0 then if F.debug then wml.log("spawn vehicle: the game's pool of vehicles is full") end return false end
   local vehicle = G.call(ctx, G.VEHICLE_FROM_HANDLE, { handle })
@@ -1958,7 +2021,11 @@ function F.spawn_vehicle(ctx, p, name)
   G.call(ctx, G.VEHICLE_MODEL_REF, { vehicle, 5 })
   G.call(ctx, G.VEHICLE_PLACE, { vehicle, pos, rows, 0 })
   F.spawned_vehicles[#F.spawned_vehicles + 1] = handle
-  if F.debug then wml.log(string.format("spawn vehicle: %s index %d handle %08X at %.1f %.1f %.1f", name, index, handle, x, y, z)) end
+  if F.debug then
+    wml.log(string.format("spawn vehicle: %s index %d handle %08X at %.1f %.1f %.1f", name, index, handle, x, y, z))
+    -- vehicle+216 is the chosen variant (-1 = the name didn't match, random look).
+    if variant then wml.log(string.format("spawn vehicle: variant %s -> %d", variant, (read_u32(vehicle + 216) + 0x80000000) % 0x100000000 - 0x80000000)) end
+  end
   return true
 end
 function F.spawn_person(ctx, p, name)
@@ -2023,6 +2090,156 @@ local function weapon_info(name)
       for k = 0, 31 do local c = read_u8(np + k) if c == 0 then break end chars[#chars + 1] = string.char(c) end
       if table.concat(chars) == name then return info end
     end
+  end
+end
+
+-- ------------------------------------------------------------- pickups
+--
+-- Cash and weapons dropped on the ground with the game's own pickup
+-- creates (see game.lua), a few per update. The money gun notes where each
+-- of your bullets stops and throws a bill from you to there on an arc, so
+-- it flies out of the gun and lands at the hit; in a car (or point blank)
+-- the bill just appears there.
+do
+  local drops, bills = {}, {}
+  local last_bill, saved_chance = 0, nil
+  local BILL_SPEED, BILL_REACH = 22, 40   -- m/s, and how far a miss flies
+  local function cash_at(ctx, x, y, z, dollars, pop)
+    local item = G.call(ctx, G.CASH_AT, { G.floats(ctx, { x, y, z }, 0), G.ROWS_ID, 0, pop and 1 or 0, 255 }, dollars)
+    if G.pointer_ok(item) then return item end
+  end
+  local function weapon_at(ctx, name, x, y, z)
+    local wi = weapon_info(name)
+    local item_info = wi and read_u32(wi + 28) or 0
+    if not G.pointer_ok(item_info) then if F.debug then wml.log("drop: no pickup for " .. name) end return end
+    local rec = G.buffer(ctx, 2)
+    for i = 0, 92, 4 do write_u32(rec + i, 0) end
+    write_u8(rec, 0x90)
+    write_u32(rec + 4, item_info)
+    write_f32(rec + 8, x); write_f32(rec + 12, y); write_f32(rec + 16, z)
+    for i = 0, 8 do write_f32(rec + 20 + i * 4, (i % 4 == 0) and 1 or 0) end
+    write_u32(rec + 56, 255)
+    write_u32(rec + 60, read_u32(G.PHYS_GROUP))
+    write_f32(rec + 64, -1.0)
+    write_u32(rec + 68, 0xFFFFFFFF)
+    local item = G.call(ctx, G.ITEM_CREATE, { rec })
+    if not G.pointer_ok(item) then return end
+    -- A full magazine, as the weapon cheat gives.
+    local ammo = read_u32(item + 220)
+    local info = G.pointer_ok(ammo) and read_u32(ammo + 8) or 0
+    if G.pointer_ok(info) then
+      local clip = read_u16(info + 104)
+      if clip > 0 and clip < 1000 then write_u32(ammo + 16, clip) end
+    end
+    G.call(ctx, G.ITEM_POP, { item })
+    return item
+  end
+
+  function F.queue_drops(what, n)
+    for _ = 1, n do if #drops < 40 then drops[#drops + 1] = what end end
+  end
+
+  -- Both cash chances at f (0..1), or the game's own back (nil).
+  function F.set_drop_chance(f)
+    if f then
+      saved_chance = saved_chance or { read_f32(G.CASH_CHANCE), read_f32(G.CASH_CHANCE + 4) }
+      write_f32(G.CASH_CHANCE, f); write_f32(G.CASH_CHANCE + 4, f)
+    elseif saved_chance then
+      write_f32(G.CASH_CHANCE, saved_chance[1]); write_f32(G.CASH_CHANCE + 4, saved_chance[2])
+      saved_chance = nil
+    end
+  end
+
+  wml.hook(G.BULLET_RAY, function(ctx)
+    local out, shooter = ctx:r(3) & 0xFFFFFFFF, ctx:r(5) & 0xFFFFFFFF
+    ctx:call_original()
+    if not F.on("money_gun") or #bills >= 8 then return end
+    local p = read_u32(G.PLAYER)
+    if p == 0 or shooter ~= p or not G.pointer_ok(out) then return end
+    -- One bill per shot, not per pellet, and no more than about 12 a second.
+    local now = os.clock()
+    if now - last_bill < 0.08 then return end
+    last_bill = now
+    bills[#bills + 1] = { read_f32(out), read_f32(out + 4), read_f32(out + 8) }
+  end)
+
+  function F.drops_update(ctx, p)
+    if #drops == 0 and #bills == 0 then return end
+    if read_u8(G.MULTIPLAYER) ~= 0 then drops, bills = {}, {} return end
+    local px, py, pz = G.vec(p + G.P.POS)
+    for _ = 1, 2 do
+      local what = table.remove(drops, 1)
+      if not what then break end
+      local a, r = math.random() * 2 * math.pi, 2 + math.random() * 5
+      local x, y, z = px + math.cos(a) * r, py + 1.5, pz + math.sin(a) * r
+      if what == "cash" then
+        cash_at(ctx, x, y, z, math.random(1, 50) * 10, true)
+      else
+        weapon_at(ctx, what == "random" and WEAPONS[math.random(#WEAPONS)][1] or what, x, y, z)
+      end
+    end
+    if not F.on("money_gun") then bills = {} return end
+    local dollars = F.items.money_gun_cash.v
+    for _ = 1, 3 do
+      local hit = table.remove(bills, 1)
+      if not hit then break end
+      local sy = py + 1.3
+      local dx, dy, dz = hit[1] - px, hit[2] - sy, hit[3] - pz
+      local d = math.sqrt(dx * dx + dy * dy + dz * dz)
+      if d > BILL_REACH then local k = BILL_REACH / d; dx, dy, dz, d = dx * k, dy * k, dz * k, BILL_REACH end
+      if d < 1.5 or G.vehicle_object(p) then
+        cash_at(ctx, px + dx, sy + dy + 0.3, pz + dz, dollars, true)
+      else
+        local ux, uy, uz = dx / d, dy / d, dz / d
+        local item = cash_at(ctx, px + ux * 0.8, sy + uy * 0.8, pz + uz * 0.8, dollars, false)
+        local body = item and read_u32(item + 116)
+        if body and body ~= 0xFFFFFFFF then
+          -- Straight at the hit, plus the lift gravity takes off on the way.
+          local t = d / BILL_SPEED
+          G.call(ctx, G.SET_VELOCITY, { body, G.floats(ctx, { dx / t, dy / t + 4.9 * t, dz / t }, 32) })
+        end
+      end
+    end
+  end
+end
+
+-- ------------------------------------------------------------- explosive punches
+--
+-- Your melee hits (the game's melee hit, so never the blast's own damage,
+-- fire or falls) on a person or a car are noted and blown up on the next
+-- update; a short shield keeps you out of it. "Small Bang" is the big test
+-- effect, so Small is the propane tank's blast.
+do
+  local queue, last = {}, -1
+  local BLASTS = { "Propane Tank", "Grenade", "RPG", "Big Bang" }
+  local GAP = 0.5   -- seconds between blasts
+  wml.hook(G.MELEE_HIT, function(ctx)
+    local target, attacker = ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF
+    ctx:call_original()
+    if not F.on("explosive_punch") or #queue >= 2 then return end
+    local p = read_u32(G.PLAYER)
+    if p == 0 or attacker ~= p or target == p or not G.pointer_ok(target) then return end
+    local kind = read_u32(target + 72)
+    if kind ~= 1 and kind ~= 5 then return end   -- people and cars
+    local now = os.clock()
+    if now - last < GAP then return end
+    last = now
+    queue[#queue + 1] = read_u32(target + 68)
+  end)
+  function F.punch_update(ctx, p)
+    if #queue == 0 then return end
+    if read_u8(G.MULTIPLAYER) ~= 0 then queue = {} return end
+    local h = table.remove(queue, 1)
+    local index = h & 0xFFFF
+    local v = index < 4096 and read_u32(G.OBJECTS + 12 + index * 16) or 0
+    if not (G.pointer_ok(v) and read_u32(v + 68) == h) then return end
+    local def = G.call(ctx, G.EXPLOSION_DEF, { G.cstr(ctx, BLASTS[F.items.punch_blast.v] or "Grenade", 0) })
+    if not G.pointer_ok(def) then if F.debug then wml.log("explosive punch: no explosion def") end return end
+    F.shields.punch = F.tick + 40   -- 0.8 s, on before the blast lands
+    F.sync_invulnerable(p)
+    G.call(ctx, G.EXPLOSION, { def, p, 0, v + 32, v + G.P.POS, 0, 0, 0 }, nil,
+      { { 84, 4, 0 }, { 92, 4, 0 }, { 103, 1, 0 }, { 111, 1, 0 } })
+    if F.debug then wml.log("explosive punch: " .. BLASTS[F.items.punch_blast.v] .. (read_u32(v + 72) == 5 and " on a car" or "")) end
   end
 end
 
@@ -6701,13 +6918,13 @@ end
 -- and set-up rows follow. Rows missing here keep their place after these.
 local ORDER = {
   Emotes = { "poses", "actions", "scene", "stop_pose", "clear_scene", "repeat_action", "repeat_every" },
-  Weapons = { "infinite_ammo", "no_reload", "fire", "harder_hits", "one_hit", "rocket_ammo", "fire_ammo",
+  Weapons = { "infinite_ammo", "no_reload", "fire", "harder_hits", "one_hit", "rocket_ammo", "fire_ammo", "money_gun", "money_gun_cash", "explosive_punch", "punch_blast",
     "weapon_switch", "aim_style", "aim_camera_page", "fine_aim_zoom", "fine_aim_spread",
     "give_weapon", "all_weapons", "ammo_all" },
   Vehicles = { "veh_god", "veh_repair", "tank", "bulletproof", "never_flat", "no_fling", "car_grip", "nitro_all",
     "spawn_vehicle", "remove_vehicles", "garage", "vehicle_custom", "paint", "paint2", "boom", "max_speed" },
   World = { "weather", "hour", "freeze_clock", "clear", "restore_traffic", "drop", "kill_all", "everybody", "spawn_person",
-    "crowd_small", "crowd_big", "remove_people" },
+    "crowd_small", "crowd_big", "remove_people", "cash_rain", "weapon_rain", "cash_drop_chance" },
   Visual = { "hide_hud", "letterbox", "free_cam", "cam_mode", "freeze_world", "filter", "render_mode", "saturation" },
   Teleport = { "places", "tp_stores", "tp_activities", "waypoint_go", "waypoint_auto" },
   Settings = { "master", "status", "settings_controls", "settings_ui_plus", "settings_unlocks", "settings_tweaks" },

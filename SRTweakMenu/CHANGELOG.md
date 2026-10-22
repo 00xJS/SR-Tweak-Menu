@@ -1,5 +1,19 @@
 # SR Tweak Menu - changes
 
+## 2.1
+
+- Spawn vehicle lists the game's own blinged versions after each plain car
+  ("Slingshot", "Slingshot Blinged"): 20 cars, plus the Hollywood from the
+  Blinged Out Ride mode in four colours. Deliver to garage keeps the plain
+  list.
+- Weapons: **Money gun**. Each shot throws a bill from your gun that lands
+  where the bullet hit; pick it up again. Bill value $100 to $10,000.
+- Weapons: **Explosive punches**. Punches and melee hits blow up whoever
+  (or whichever car) you hit (Small, Grenade, Rocket or Huge blast); your own blast can't hurt you.
+- Give weapon and Drop weapons have the multiplayer **Pimp Slap**.
+- World: **Drop cash around me**, **Drop weapons around me** (any weapon or
+  a random mix) and **Cash drop chance** (how often the dead drop cash).
+
 ## 2.0
 
 itsMJQ's 1.1 to 1.9.11 (below) brought together with SR Tweak Menu's add-ons

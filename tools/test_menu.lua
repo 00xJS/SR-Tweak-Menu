@@ -169,6 +169,7 @@ local FAKE = {
     assert(read_u32(ctx.regs[1] + 84) == 0 and read_u32(ctx.regs[1] + 100) == 0, "vehicle stack args missing")
     assert(ctx.regs[3] == 7 and ctx.regs[4] == 2 and ctx.regs[5] == 12, "vehicle registers wrong")
     vehicles_made = (vehicles_made or 0) + 1
+    vehicle_variant = ctx.regs[10] ~= 0 and read_cstr(ctx.regs[10]) or false
     ctx.regs[3] = 0x00050009
   end,
   [0x82569630] = function(ctx) ctx.regs[3] = 0x47000000 end,
@@ -400,6 +401,18 @@ do
   keys_down["SHIFT"] = true; press("RIGHT"); keys_down["SHIFT"] = nil; update(1)
   assert(it.v == 13, "Shift + Right should jump ten, got " .. it.v)
   print("---- vehicle row ----"); print(mailbox_text())
+  -- Blinged versions follow their plain car and spawn as the game's named variant.
+  local list, at = it.items, {}
+  for i, e in ipairs(list) do at[e[2]] = i end
+  assert(#list == 103 and #F.items.garage.items == 79, "spawn list should be 79 cars + 24 blinged, got " .. #list)
+  assert(at["Slingshot Blinged"] == at["Slingshot"] + 1 and at["Hollywood Blinged Yellow"] == at["Hollywood"] + 4, "blinged order")
+  it.v = at["Slingshot Blinged"]; press("ENTER")
+  assert(vehicle_variant == "Blinged", "Slingshot Blinged variant: " .. tostring(vehicle_variant))
+  it.v = at["Vegas Blinged"]; press("ENTER")
+  assert(vehicle_variant == "Bling", "Vegas Blinged variant: " .. tostring(vehicle_variant))
+  it.v = at["Slingshot"]; press("ENTER")
+  assert(vehicle_variant == false, "plain Slingshot should pass no variant")
+  F.remove_spawned(make_ctx(), F.spawned_vehicles, "vehicle")
 end
 
 -- Everybody dance: every person but the player gets a dance state applied;
@@ -1120,6 +1133,120 @@ do
       for _, l in ipairs(lines) do assert(#l <= 90, it.id .. " help line too long: " .. l) end
     end
   end
+end
+
+-- Pickups: cash around the player, the money gun's bill thrown from the
+-- player to where the bullet stopped, and the live cash drop chance.
+do
+  local F = require("features")
+  local cash, vel = {}, nil
+  local old_cash, old_vel = FAKE[0x82408C58], FAKE[0x82253F10]
+  FAKE[0x82408C58] = function(ctx)
+    local a = ctx.regs[3]
+    cash[#cash + 1] = { read_f32(a), read_f32(a + 4), read_f32(a + 8), dollars = ctx.fregs[1], pop = ctx.regs[6] }
+    write_u32(0x49000000 + 116, 7)
+    ctx.regs[3] = 0x49000000
+  end
+  FAKE[0x82253F10] = function(ctx)
+    assert(ctx.regs[3] == 7, "velocity on the bill's body")
+    local a = ctx.regs[4]
+    vel = { read_f32(a), read_f32(a + 4), read_f32(a + 8) }
+  end
+  write_f32(P + 20, 100); write_f32(P + 24, 10); write_f32(P + 28, 200)
+  F.queue_drops("cash", 10)
+  update(5)
+  assert(#cash == 10, "10 bills dropped, got " .. #cash)
+  for _, c in ipairs(cash) do
+    local d = math.sqrt((c[1] - 100) ^ 2 + (c[3] - 200) ^ 2)
+    assert(d >= 2 and d <= 7.01 and c.dollars >= 10 and c.dollars <= 500 and c.pop == 1, "bill placed badly")
+  end
+  -- Money gun: off, a shot does nothing; on, one bill flies at the hit.
+  cash = {}
+  local out = 0x49200000
+  write_f32(out, 120); write_f32(out + 4, 11.3); write_f32(out + 8, 200)
+  local function shot(shooter)
+    local ctx = make_ctx(); ctx.regs[3] = out; ctx.regs[5] = shooter
+    hooks[0x8246FD18](ctx)
+  end
+  F.items.money_gun.v = false; shot(P); update(1)
+  assert(#cash == 0, "money gun off still dropped")
+  F.items.money_gun.v = true
+  shot(0x45000000); update(1)
+  assert(#cash == 0, "someone else's shot dropped cash")
+  F.items.money_gun_cash.v = 250
+  shot(P); update(1)
+  assert(#cash == 1 and cash[1].dollars == 250 and cash[1].pop == 0, "money gun bill")
+  assert(math.abs(cash[1][1] - 100.8) < 0.01 and math.abs(cash[1][2] - 11.3) < 0.01, "bill starts at the gun")
+  assert(vel and vel[1] > 15 and math.abs(vel[3]) < 1e-3 and vel[2] > 0, "bill thrown at the hit")
+  F.items.money_gun.v = false; F.items.money_gun_cash.v = 100
+  -- Cash drop chance: written while moved, the game's value back at 25%.
+  F.items.cash_drop_chance.v = 25; update(1)   -- (the walk may have left it moved)
+  write_f32(0x838F8520, 0.25); write_f32(0x838F8524, 0.25)
+  F.items.cash_drop_chance.v = 100; update(1)
+  assert(read_f32(0x838F8520) == 1 and read_f32(0x838F8524) == 1, "drop chance not written")
+  F.items.cash_drop_chance.v = 25; update(1)
+  assert(math.abs(read_f32(0x838F8520) - 0.25) < 1e-6, "drop chance not put back")
+  -- The new rows: weapons list starts with the random mix; the bill value hides with the gun off.
+  assert(F.items.weapon_rain.items[1][1] == "random" and #F.items.weapon_rain.items == #F.items.give_weapon.items + 1, "weapon drop list")
+  assert(F.items.money_gun_cash.hidden(), "bill value shown with the money gun off")
+  FAKE[0x82408C58], FAKE[0x82253F10] = old_cash, old_vel
+end
+
+-- Explosive punches: your melee hit on a person or a car blows it up on the
+-- next update, as the console's explosion does; you're shielded first;
+-- other damage (the blast's own, fire) never sets one off.
+do
+  local F = require("features")
+  local V2 = 0x55000000
+  write_u32(V2 + 72, 1); write_u32(V2 + 68, 0x0009002A); write_u32(V2 + 216, 0)
+  write_u32(0x830866C8 + 12 + 0x2A * 16, V2)
+  write_u32(P + 3548, 0)
+  local blasts, def_name = {}, nil
+  FAKE[0x82138FB0] = function(c) def_name = read_cstr(c.regs[3]); c.regs[3] = 0x4A000000 end
+  FAKE[0x82138AE8] = function(c)
+    assert(c.regs[3] == 0x4A000000 and c.regs[4] == P and c.regs[6] == V2 + 32 and c.regs[7] == V2 + 20, "explosion args")
+    assert(read_u32(c.regs[1] + 84) == 0 and read_u32(c.regs[1] + 92) == 0, "explosion stack args")
+    assert(G_shielded(), "not shielded before the blast")
+    blasts[#blasts + 1] = true
+  end
+  function G_shielded() return F.shields.punch ~= nil end
+  local function hit(target)
+    local dctx = make_ctx(); dctx.regs[3], dctx.regs[4] = target or V2, P
+    hooks[0x824560D8](dctx)
+  end
+  local function damage()
+    local dctx = make_ctx(); dctx.regs[3], dctx.regs[4] = V2, P
+    hooks[0x824470D0](dctx)
+  end
+  F.items.explosive_punch.v = false; hit(); update(1)
+  assert(#blasts == 0, "punch blew up with the switch off")
+  F.items.explosive_punch.v = true; F.items.punch_blast.v = 3
+  damage(); update(1)
+  assert(#blasts == 0, "plain damage (not a melee hit) set off a blast")
+  hit(); assert(#blasts == 0, "blast must wait for the update"); update(1)
+  assert(#blasts == 1 and def_name == "RPG", "punch blast: " .. tostring(def_name))
+  hit(); update(1)
+  assert(#blasts == 1, "a second hit inside half a second blew up again")
+  -- A car: type 5.
+  local CAR = 0x56000000
+  write_u32(CAR + 72, 5); write_u32(CAR + 68, 0x0009002B)
+  write_u32(0x830866C8 + 12 + 0x2B * 16, CAR)
+  local car_ok = false
+  local old_blast = FAKE[0x82138AE8]
+  FAKE[0x82138AE8] = function(c) car_ok = c.regs[7] == CAR + 20 end
+  local t0 = os.clock(); while os.clock() - t0 < 0.55 do end
+  F.items.punch_blast.v = 1
+  hit(CAR); update(1)
+  assert(car_ok and def_name == "Propane Tank", "car punch: " .. tostring(def_name))
+  FAKE[0x82138AE8] = old_blast
+  assert(not F.items.punch_blast.hidden(), "blast size shown with punches on")
+  F.items.explosive_punch.v = false
+  assert(F.items.punch_blast.hidden(), "blast size hidden with punches off")
+  -- The pimp slap is in the weapon lists; bills go up in hundreds.
+  local found = false
+  for _, w in ipairs(F.items.give_weapon.items) do if w[1] == "pimp_slap" then found = true end end
+  assert(found, "Pimp Slap missing from Give weapon")
+  assert(F.items.money_gun_cash.step == 100 and F.items.money_gun_cash.max == 10000, "bill value in hundreds")
 end
 
 print(string.format("\n%d script calls, %d console lines, %d HUD messages, %d errors", #scripts, #consoles, #hud_texts, errors))
