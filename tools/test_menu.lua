@@ -212,7 +212,7 @@ assert(hooks[0x824470D0], "damage hook missing")
 -- Everything starts off: toggles off, sliders at the game's own value -
 -- except the Quality of life rows meant to be on (mod.ini says so).
 local F0 = require("features")
-local STARTS_ON = { crouch_moving = true, car_cam_nose = true, driveby_cam = true }
+local STARTS_ON = { crouch_moving = true, car_cam_nose = true, driveby_cam = true, car_free_cam = true }
 for _, cat in ipairs(F0.categories) do
   for _, it in ipairs(cat.items) do
     if it.kind == "toggle" and it.id ~= "master" then
@@ -258,7 +258,7 @@ do
   write_f32(0x827D7AB0, 0.5); write_f32(0x827AC218, 0.006); write_f32(0x827AC224, 0.012711); write_f32(0x827D9364, 3.0)
   update(2)
   assert(math.abs(read_f32(0x827D7AB0) - 4.0) < 1e-4, "crouch while moving not written")
-  assert(math.abs(read_f32(0x827AC218) - 0.012) < 1e-6 and math.abs(read_f32(0x827D9364) - 1.0) < 1e-4, "car camera not written")
+  assert(math.abs(read_f32(0x827AC218) - 0.006) < 1e-6 and math.abs(read_f32(0x827D9364)) < 1e-4, "free camera: the game's hold set to 0")
   -- FOV x1.2 on the follow camera, eased in.
   write_u32(0x827D9778, 0); write_f32(0x827D9778 + 192, 60); write_f32(0x827AA6C8, 1 / 30)
   for _ = 1, 40 do write_f32(0x827D9778 + 188, 60); update(1) end
@@ -266,7 +266,7 @@ do
   F.items.crouch_moving.v = false; update(2)
   assert(math.abs(read_f32(0x827D7AB0) - 0.5) < 1e-4, "crouch not put back")
   F.enabled = false; update(2)
-  assert(math.abs(read_f32(0x827AC218) - 0.006) < 1e-6 and math.abs(read_f32(0x827D9364) - 3.0) < 1e-4, "All tweaks off didn't put the car camera back")
+  assert(math.abs(read_f32(0x827D9364) - 3.0) < 1e-4, "All tweaks off didn't put the car camera back")
   F.enabled = true; F.items.crouch_moving.v = true; update(2)
   -- Save tweaks for next time: written, then read back over changed rows.
   F.items.god.v = true; F.items.fov.v = 1.35

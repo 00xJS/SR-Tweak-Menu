@@ -1,5 +1,19 @@
 # SR Tweak Menu - changes
 
+## 2.4
+
+- Vehicles > Driving camera: **Free camera in cars** (on by default). Move
+  the camera with the mouse or right stick and it keeps looking that way:
+  the car turns under it, instead of the game locking it to the car for a
+  few seconds and then pulling it back behind.
+- **Camera resets after** (moving, and standing still): how long after you
+  stop moving it before it goes back to following the car - up to
+  **Always**, never, which is where both start.
+- Looking up and down stays where you tilt it while the camera is free (the
+  game would otherwise level it back every frame).
+- Swing-back speed starts at the game's own (x1) again; 2.2's x2 and 1 s
+  hold made the camera feel stiff.
+
 ## 2.3
 
 - Settings: **Menu look**, switched live: the plain text menu, or itsMJQ's

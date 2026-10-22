@@ -146,6 +146,55 @@ local function in_drive_by()
   return p ~= 0 and read_u32(p + P_DRIVE_BY) == 3 and read_u32(p + G.P.VEHICLE) ~= 0
 end
 
+-- Free camera in cars. The follow camera's yaw (0x8210CFE0) has two modes.
+-- While its hold timer runs - started by camera input for asvct
+-- default_time (3 s; stationary_time 0.5 s standing still) - it adds the
+-- car's turn to the camera, so the camera is locked to the car and turns
+-- with it. Otherwise it swings towards where the car is going (0x8210C718),
+-- pulling the camera back behind. Here the hold is set to 0 while in a car,
+-- and once the camera's turn inputs (+320 across, +336 up and down: the
+-- right stick and the host's mouse look) have moved it, the swing gets a
+-- negative rate (as the game gives passengers): the camera keeps looking
+-- where you pointed it and the car turns under it. It stays free until the
+-- reset time (Camera resets after; Always = never) or until you get out.
+local CAM_TURN_H, CAM_TURN_V = 320, 336
+local HOLD_ALWAYS, HOLD_FOREVER_GAME = 10.5, 9999
+-- Up and down: the pitch (0x8210C9E0) keeps where you tilted the camera only
+-- while the hold timer runs; once it has run out it eases the camera back
+-- level, every frame - with the hold at 0 that locked looking up and down.
+-- Its check (0x82629278(timer) -> 1 when run out; the pitch's call returns
+-- to 0x8210CD18) is answered "still running" while the camera is free.
+local TIMER_RUN_OUT, PITCH_TIMER_CALL = 0x82629278, 0x8210CD18
+local free = { on = false, last = nil }
+local function hold_seconds(v) return v >= HOLD_ALWAYS and HOLD_FOREVER_GAME or v end
+
+local function car_speed2(handle)
+  local v = vehicle_from_handle(handle)
+  if not v then return 0 end
+  local body = read_u32(v + V_MOTION)
+  if not G.pointer_ok(body) then return 0 end
+  local motion = read_u32(body + MOTION)
+  if not G.pointer_ok(motion) then return 0 end
+  local a = motion + MOTION_VELOCITY
+  local x, y, z = read_f32(a), read_f32(a + 4), read_f32(a + 8)
+  return x * x + y * y + z * z
+end
+
+-- True while the camera should keep its own direction (called from the
+-- swing, inside the camera update).
+local function free_camera()
+  local p = G.player()
+  local handle = p ~= 0 and read_u32(p + G.P.VEHICLE) or 0
+  if handle == 0 then free.on, free.last = false, nil return false end
+  if math.abs(read_f32(G.CAMERA + CAM_TURN_H)) > 1e-4 or math.abs(read_f32(G.CAMERA + CAM_TURN_V)) > 1e-4 then
+    free.on, free.last = true, now()
+  end
+  if not free.on then return false end
+  local row = car_speed2(handle) < STOPPED_SPEED2 and F.items.car_cam_hold_stopped or F.items.car_cam_hold
+  if row.v < HOLD_ALWAYS and now() - free.last >= row.v then free.on = false end
+  return free.on
+end
+
 -- ================================================================ on foot
 -- Click-to-crouch only takes the click while the left stick is pushed less
 -- than this (x^2 + y^2; 0.5). WASD always reads as a full push.
@@ -448,6 +497,7 @@ end
 -- ================================================================ rows
 local function fmtx(v) return string.format("x%.2f", v) end
 local function fmts(v) return string.format("%.1f s", v) end
+local function fmthold(v) return v >= HOLD_ALWAYS and "Always" or string.format("%.1f s", v) end
 local function fmtdeg(v) return string.format("%d deg", v) end
 
 -- Rows the game reads every frame: written while on, put back when off.
@@ -475,18 +525,28 @@ function J.setup(features)
 
   F.add_rows("Vehicles", nil, {
     { id = "qol_car_camera", label = "Driving camera", kind = "header" },
-    { id = "car_cam_hold", label = "Camera hold", kind = "value", needs = "none", default = 3.0, min = 0, max = 6, step = 0.5,
-      fmt = fmts, v = S("car_camera_hold", 1.0),
-      help = "How long the camera stays where you turned it before swinging back behind the car (game: 3 s).",
-      update = function(ctx, p, v, it) keep(HOLD_TIME, it.v) end,
-      off = function(ctx, p, v, it) write_f32(HOLD_TIME, it.default) end },
-    { id = "car_cam_hold_stopped", label = "Camera hold, standing still", kind = "value", needs = "none", default = 0.5, min = 0, max = 3,
-      step = 0.25, fmt = fmts, v = S("car_camera_hold_stopped", 0.5),
+    { id = "car_free_cam", label = "Free camera in cars", kind = "toggle", needs = "none", v = S("car_free_camera", true),
+      help = "Move the camera and it keeps looking that way: the car turns under it, it doesn't turn with the car or reset.",
+      update = function() keep(HOLD_TIME, 0); keep(HOLD_TIME_STOPPED, 0) end,
+      off = function()
+        -- Back to the reset rows' times, or the game's own with All tweaks off.
+        local function back(row) return (F.enabled and row.v ~= row.default) and hold_seconds(row.v) or row.default end
+        write_f32(HOLD_TIME, back(F.items.car_cam_hold))
+        write_f32(HOLD_TIME_STOPPED, back(F.items.car_cam_hold_stopped))
+        free.on = false
+      end },
+    { id = "car_cam_hold", label = "Camera resets after", kind = "value", needs = "none", default = 3.0, min = 0.5, max = HOLD_ALWAYS,
+      step = 0.5, fmt = fmthold, v = S("car_camera_hold", HOLD_ALWAYS),
+      help = "After you stop moving it, how long before the camera goes back to following the car. Always: never (game: 3 s).",
+      update = function(ctx, p, v, it) if not on("car_free_cam") then keep(HOLD_TIME, hold_seconds(it.v)) end end,
+      off = function(ctx, p, v, it) if not on("car_free_cam") then write_f32(HOLD_TIME, it.default) end end },
+    { id = "car_cam_hold_stopped", label = "Camera resets after, stopped", kind = "value", needs = "none", default = 0.5, min = 0.5,
+      max = HOLD_ALWAYS, step = 0.5, fmt = fmthold, v = S("car_camera_hold_stopped", HOLD_ALWAYS),
       help = "The same while the car stands still (game: 0.5 s).",
-      update = function(ctx, p, v, it) keep(HOLD_TIME_STOPPED, it.v) end,
-      off = function(ctx, p, v, it) write_f32(HOLD_TIME_STOPPED, it.default) end },
+      update = function(ctx, p, v, it) if not on("car_free_cam") then keep(HOLD_TIME_STOPPED, hold_seconds(it.v)) end end,
+      off = function(ctx, p, v, it) if not on("car_free_cam") then write_f32(HOLD_TIME_STOPPED, it.default) end end },
     { id = "car_cam_follow", label = "Camera swing-back speed", kind = "value", needs = "none", default = 1.0, min = 0.25, max = 4,
-      step = 0.25, fmt = fmtx, v = S("car_camera_follow", 2.0),
+      step = 0.25, fmt = fmtx, v = S("car_camera_follow", 1.0),
       help = "How fast the camera swings back behind the car (game: x1).",
       update = function(ctx, p, v, it)
         keep(SWING_FORWARD, SWING_FORWARD_GAME * it.v); keep(SWING_REVERSE, SWING_REVERSE_GAME * it.v)
@@ -680,15 +740,23 @@ function J.install()
     fired_once("camera follows the nose")
   end)
 
-  -- Free drive-by camera: a negative rate for this one call, as the game
-  -- gives passengers; both put back afterwards.
+  -- Free camera in cars: the pitch keeps where you tilted it (see above).
+  wml.hook(TIMER_RUN_OUT, function(ctx)
+    if ctx:lr() == PITCH_TIMER_CALL and on("car_free_cam") and free_camera() then ctx:set_r(3, 0) return end
+    ctx:call_original()
+  end)
+
+  -- Free drive-by camera and free camera in cars: a negative rate for this
+  -- one call, as the game gives passengers; both put back afterwards.
   wml.hook(CAMERA_SWING, function(ctx)
-    if not on("driveby_cam") or not in_drive_by() then ctx:call_original() return end
+    local why = (on("driveby_cam") and in_drive_by() and "drive-by free camera")
+      or (on("car_free_cam") and free_camera() and "free camera in cars")
+    if not why then ctx:call_original() return end
     local rate, timed = read_f32(G.CAMERA + CAM_RATE), read_f32(G.CAMERA + CAM_RATE_TIMED)
     write_f32(G.CAMERA + CAM_RATE, -1.0); write_f32(G.CAMERA + CAM_RATE_TIMED, -1.0)
     ctx:call_original()
     write_f32(G.CAMERA + CAM_RATE, rate); write_f32(G.CAMERA + CAM_RATE_TIMED, timed)
-    fired_once("drive-by free camera")
+    fired_once(why)
   end)
 
   -- Map arrow: the pause map's heading from the player's rows, and the
