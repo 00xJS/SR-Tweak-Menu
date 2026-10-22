@@ -155,8 +155,10 @@ end
 -- and once the camera's turn inputs (+320 across, +336 up and down: the
 -- right stick and the host's mouse look) have moved it, the swing gets a
 -- negative rate (as the game gives passengers): the camera keeps looking
--- where you pointed it and the car turns under it. It stays free until the
--- reset time (Camera resets after; Always = never) or until you get out.
+-- where you pointed it and the car turns under it. With Camera resets after
+-- at Always (the default) it is free the whole time you're in a car, moved
+-- or not - it never swings back behind; with a time set it is free once
+-- moved, until it's been left alone that long, and again in the next car.
 local CAM_TURN_H, CAM_TURN_V = 320, 336
 local HOLD_ALWAYS, HOLD_FOREVER_GAME = 10.5, 9999
 -- Up and down: the pitch (0x8210C9E0) keeps where you tilted the camera only
@@ -189,9 +191,10 @@ local function free_camera()
   if math.abs(read_f32(G.CAMERA + CAM_TURN_H)) > 1e-4 or math.abs(read_f32(G.CAMERA + CAM_TURN_V)) > 1e-4 then
     free.on, free.last = true, now()
   end
-  if not free.on then return false end
   local row = car_speed2(handle) < STOPPED_SPEED2 and F.items.car_cam_hold_stopped or F.items.car_cam_hold
-  if row.v < HOLD_ALWAYS and now() - free.last >= row.v then free.on = false end
+  if row.v >= HOLD_ALWAYS then return true end
+  if not free.on then return false end
+  if now() - free.last >= row.v then free.on = false end
   return free.on
 end
 
@@ -537,7 +540,7 @@ function J.setup(features)
       end },
     { id = "car_cam_hold", label = "Camera resets after", kind = "value", needs = "none", default = 3.0, min = 0.5, max = HOLD_ALWAYS,
       step = 0.5, fmt = fmthold, v = S("car_camera_hold", HOLD_ALWAYS),
-      help = "After you stop moving it, how long before the camera goes back to following the car. Always: never (game: 3 s).",
+      help = "How long after you stop moving it before the camera follows the car again. Always: never, fully free (game: 3 s).",
       update = function(ctx, p, v, it) if not on("car_free_cam") then keep(HOLD_TIME, hold_seconds(it.v)) end end,
       off = function(ctx, p, v, it) if not on("car_free_cam") then write_f32(HOLD_TIME, it.default) end end },
     { id = "car_cam_hold_stopped", label = "Camera resets after, stopped", kind = "value", needs = "none", default = 0.5, min = 0.5,

@@ -1,5 +1,12 @@
 # SR Tweak Menu - changes
 
+## 2.4.1
+
+- Free camera in cars with **Camera resets after** at Always (the default)
+  is fully free: the camera no longer slowly swings back behind the car
+  before you've moved it, or after getting into a car. With a reset time
+  set it works as in 2.4.
+
 ## 2.4
 
 - Vehicles > Driving camera: **Free camera in cars** (on by default). Move
