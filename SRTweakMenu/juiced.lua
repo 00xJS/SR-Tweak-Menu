@@ -370,14 +370,16 @@ local function install_startup(skip_intro, load_last)
     local triggers = read_u8(state + 6) >= TRIGGER_PRESSED or read_u8(state + 7) >= TRIGGER_PRESSED
     local new = (buttons & ~ls.pad_before) ~= 0 or (triggers and not ls.triggers_before)
     ls.pad_before, ls.triggers_before = buttons, triggers
-    if ls.phase == 0 and ls.since and new then ls.cancelled = true end
+    if ls.phase == 0 and ls.since and new and not ls.cancelled then
+      ls.cancelled = string.format("pad buttons %04X, triggers %d / %d", buttons, read_u8(state + 6), read_u8(state + 7))
+    end
   end)
   wml.on_frame(function()
     if ls.phase ~= 0 then return end
-    if cancel_key ~= "" and wml.key_down(cancel_key) then ls.cancelled = true end
+    if cancel_key ~= "" and wml.key_down(cancel_key) and not ls.cancelled then ls.cancelled = cancel_key .. " held" end
     if not ls.since then return end
     for vk = 1, 254 do
-      if wml.key_pressed(vk) then ls.cancelled = true; break end
+      if wml.key_pressed(vk) then ls.cancelled = ls.cancelled or string.format("key %d (0x%02X)", vk, vk); break end
     end
   end)
 
@@ -385,7 +387,7 @@ local function install_startup(skip_intro, load_last)
     if ls.phase == 0 then
       if ls.cancelled then
         ls.phase = 2
-        log("juiced: load last save cancelled")
+        wml.log("juiced: load last save cancelled by " .. tostring(ls.cancelled))
       elseif main_menu_idle() then
         local wait = math.max(MIN_WAIT, F.items.load_wait.v)
         if not ls.since then
