@@ -25,6 +25,21 @@ local function log(...) if G.debug then wml.log(...) end end
 local fired = {}
 local function fired_once(name) if G.debug and not fired[name] then fired[name] = true; wml.log("juiced: " .. name) end end
 
+-- A hook the loader refuses (it can't detour every compiled function)
+-- switches off only its own tweak, logged; the rest of the menu still loads.
+-- (The loader's own error can itself fail to format, so it's caught.)
+J.broken = {}
+local function hook(addr, name, fn)
+  local ok, err = pcall(wml.hook, addr, fn)
+  if not ok then
+    J.broken[name] = true
+    wml.log(string.format("juiced: couldn't hook %s at %08X (%s) - that tweak is off, the rest of the menu works",
+      name, addr, tostring(err)))
+  end
+  return ok
+end
+
+
 -- Seconds, wall clock. On Windows os.clock() is time since start; on the
 -- Mac it's processor time (faster with several threads busy), so whole
 -- seconds from os.time() there.
@@ -46,41 +61,43 @@ local function key_setting(name, default)
 end
 
 -- ================================================================ camera
--- Each tick the camera manager (0x82109608, inside the game update) runs
--- the current mode, which sets the wanted FOV at +192, then copies it to
--- the final FOV at +188 the frame is drawn with (degrees, 4:3 horizontal).
--- Mode 0 is the follow camera, on foot and driving; 3 scripted, 4
--- cutscene, and free cameras push their own.
-local CAM_MODE, CAM_FOV, CAM_WANTED_FOV, FOLLOW_CAMERA, FOV_MAX = 0, 188, 192, 0, 150
--- The widening eases in and out (leaving a cutscene, another mod handing
--- the FOV back) and fades out over ZOOM_RAMP degrees above ZOOM_LIMIT, so
--- aiming never jumps and scopes still zoom.
+-- Field of view. The follow camera (mode 0, on foot and in cars) sets its
+-- wanted FOV at C+192 in 0x8210C3F8 (on foot the camera info's FOV; in a car
+-- that times the car's scale, widened with speed towards Fast_fov), then the
+-- camera manager (0x82109608) carries it to the final FOV at C+188 that the
+-- frame is drawn with: copied, or eased when C+256 bit 0x08 is set - which
+-- the car path sets and nothing clears, so after the first car it always
+-- eases. The FOV is widened here, at the wanted value, so the game's own
+-- copying and easing take it to the screen the same way on foot and in cars.
+-- (Degrees, 4:3 horizontal.) 3 is a scripted camera, 4 a cutscene, and free
+-- cameras push their own; First Person writes C+188 itself, after this, and
+-- wins. The widening eases in when switched on and fades out over ZOOM_RAMP
+-- degrees above ZOOM_LIMIT, so aiming never jumps and scopes still zoom.
+-- (0x8210C3F8 itself can't be detoured by the loader; it is only called from
+-- the follow camera's update 0x8210F078, so that's hooked, after it runs.)
+local WANTED_FOV_SET = 0x8210F078
+local CAM_MODE, CAM_WANTED_FOV, FOLLOW_CAMERA, FOV_MAX = 0, 192, 0, 150
 local FRAME_TIME = 0x827AA6C8   -- float: the last frame's real length, seconds
 local EASE_SECONDS, ZOOM_LIMIT, ZOOM_RAMP = 0.2, 40, 15
-local blend, written = 0.0, nil
+local blend = 0.0
 
 local function multiplier(m, wanted)
   local t = math.max(0, math.min(1, (wanted - ZOOM_LIMIT) / ZOOM_RAMP))
   return 1 + (m - 1) * t * blend
 end
 
--- Scales the frame's FOV from the wanted one (never from the last frame's,
--- so it can't build up). Left alone when another mod (First Person, an aim
--- add-on) set the final FOV itself; while the camera doesn't run (pause
--- menu, map) the final FOV is still what was written here, and kept.
-local function apply_fov(m)
-  local final = read_f32(G.CAMERA + CAM_FOV)
-  if G.in_cutscene() or read_u32(G.CAMERA + CAM_MODE) ~= FOLLOW_CAMERA then blend, written = 0.0, nil return end
-  local wanted = read_f32(G.CAMERA + CAM_WANTED_FOV)
-  if final ~= wanted then
-    if final ~= written then blend, written = 0.0, nil end
+-- From the hook on 0x8210F078, right after the game set the wanted FOV.
+local function widen_fov()
+  local it = F.items.fov
+  if not F.enabled or it.v == it.default or G.in_cutscene() or read_u32(G.CAMERA + CAM_MODE) ~= FOLLOW_CAMERA then
+    blend = 0.0
     return
   end
   local dt = read_f32(FRAME_TIME)
   if not (dt > 0 and dt < 0.25) then dt = 1 / 30 end
   blend = blend + (1 - blend) * (1 - math.exp(-dt / EASE_SECONDS))
-  write_f32(G.CAMERA + CAM_FOV, math.min(wanted * multiplier(m, wanted), FOV_MAX))
-  written = read_f32(G.CAMERA + CAM_FOV)
+  local wanted = read_f32(G.CAMERA + CAM_WANTED_FOV)
+  write_f32(G.CAMERA + CAM_WANTED_FOV, math.min(wanted * multiplier(it.v, wanted), FOV_MAX))
   fired_once("field of view")
 end
 
@@ -416,12 +433,12 @@ end
 
 local function install_startup(skip_intro, load_last)
   if skip_intro then
-    wml.hook(LOGO_START, function(ctx)
+    hook(LOGO_START, "skip intro (logos)", function(ctx)
       ctx:call_original()
       write_u32(LOGO_STEP, LOGOS_DONE)
       fired_once("logos skipped")
     end)
-    wml.hook(LEGAL_TICK, function(ctx)
+    hook(LEGAL_TICK, "skip intro (legal screen)", function(ctx)
       if read_u8(STARTUP_DONE) ~= 0 then write_u8(LEGAL_DONE, 1); fired_once("legal screen cut short") return end
       ctx:call_original()
     end)
@@ -449,7 +466,7 @@ local function install_startup(skip_intro, load_last)
     end
   end)
 
-  wml.hook(MAIN_MENU_UPDATE, function(ctx)
+  hook(MAIN_MENU_UPDATE, "load last save (main menu)", function(ctx)
     if ls.phase == 0 then
       if ls.cancelled then
         ls.phase = 2
@@ -475,7 +492,7 @@ local function install_startup(skip_intro, load_last)
     ctx:call_original()
   end)
 
-  wml.hook(LIST_INPUT, function(ctx)
+  hook(LIST_INPUT, "load last save (load list)", function(ctx)
     if ls.phase == 1 then
       local pick = newest_save()
       if pick then
@@ -649,8 +666,7 @@ function J.setup(features)
     { id = "fov", label = "Field of view", kind = "value", needs = "none", default = 1.0, min = 0.5, max = 2.0, step = 0.05,
       fmt = fmtx, v = S("fov_multiplier", 1.2),
       help = "Widens the normal camera, on foot and driving. Cutscenes and scopes keep the game's own.",
-      update = function(ctx, p, v, it) apply_fov(it.v) end,
-      off = function() blend, written = 0.0, nil end },
+      off = function() blend = 0.0 end },
     { id = "no_fog", label = "No fog", kind = "toggle", needs = "none", v = S("no_fog", false),
       help = "Clears the distance haze over the city. It also shows where the world ends.",
       update = function() if read_u8(FOG) ~= 0 then write_u8(FOG, 0) end end,
@@ -794,8 +810,14 @@ end
 
 -- ================================================================ hooks
 function J.install()
+  -- Field of view: widened where the follow camera sets it (see above).
+  hook(WANTED_FOV_SET, "field of view", function(ctx)
+    ctx:call_original()
+    widen_fov()
+  end)
+
   -- Brake lights: every car's brake input, as the lights ask for it.
-  wml.hook(BRAKE_INPUT, function(ctx)
+  hook(BRAKE_INPUT, "brake lights", function(ctx)
     local handle, from = ctx:r(3), ctx:lr()
     ctx:call_original()
     if not BRAKE_CALLERS[from] or not on("brake_lights") or ctx:f(1) > 0.2 then return end
@@ -806,7 +828,7 @@ function J.install()
   -- Follows the nose: the car's forward row at the car's speed (kept, as
   -- the camera's standing-still tests use it) with the sign of where it's
   -- going (so reversing still swings the game's way).
-  wml.hook(FOLLOW_DIRECTION, function(ctx)
+  hook(FOLLOW_DIRECTION, "camera follows the nose", function(ctx)
     local out, target, from = ctx:r(3), ctx:r(4), ctx:lr()
     ctx:call_original()
     if from ~= FOLLOW_CALL_RETURN or not on("car_cam_nose") or not G.pointer_ok(target) then return end
@@ -820,14 +842,14 @@ function J.install()
   end)
 
   -- Free camera in cars: the pitch keeps where you tilted it (see above).
-  wml.hook(TIMER_RUN_OUT, function(ctx)
+  hook(TIMER_RUN_OUT, "free camera (up and down)", function(ctx)
     if ctx:lr() == PITCH_TIMER_CALL and on("car_free_cam") and free_camera() then ctx:set_r(3, 0) return end
     ctx:call_original()
   end)
 
   -- Free drive-by camera and free camera in cars: a negative rate for this
   -- one call, as the game gives passengers; both put back afterwards.
-  wml.hook(CAMERA_SWING, function(ctx)
+  hook(CAMERA_SWING, "free camera / drive-by camera", function(ctx)
     local why = (on("driveby_cam") and in_drive_by() and "drive-by free camera")
       or (on("car_free_cam") and free_camera() and "free camera in cars")
     if not why then ctx:call_original() return end
@@ -840,14 +862,14 @@ function J.install()
 
   -- Map arrow: the pause map's heading from the player's rows, and the
   -- Rotational minimap's arrow drawn turned.
-  wml.hook(HEADING_OF, function(ctx)
+  hook(HEADING_OF, "map arrow (pause map)", function(ctx)
     if ctx:lr() == PAUSE_MAP_CALL and on("map_arrow") then
       local p = G.player()
       if p ~= 0 then ctx:set_r(3, p + P_ROWS); fired_once("pause map arrow") end
     end
     ctx:call_original()
   end)
-  wml.hook(ARROW_UPRIGHT, function(ctx)
+  hook(ARROW_UPRIGHT, "map arrow (minimap)", function(ctx)
     local p = ctx:lr() == MINIMAP_CALL and on("map_arrow") and read_u8(MAP_STATIC) == 0 and G.player() or 0
     if p == 0 then ctx:call_original() return end
     local scale_x, scale_y = read_f32(SCALE_X), read_f32(SCALE_Y)
@@ -878,7 +900,7 @@ function J.install()
 
   install_startup(F.items.skip_intro.v, F.items.load_last_save.v)
 
-  wml.hook(PAD_STATE, function(ctx)
+  hook(PAD_STATE, "controller (cutscene pause, load cancel)", function(ctx)
     local user, state = ctx:r(3), ctx:r(4)
     ctx:call_original()
     if user ~= 0 or state == 0 then return end

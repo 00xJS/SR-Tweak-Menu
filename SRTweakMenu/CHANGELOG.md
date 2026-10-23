@@ -1,5 +1,18 @@
 # SR Tweak Menu - changes
 
+## 2.4.4
+
+- Visual > Camera > Field of view works in cars, and keeps working after you
+  get out. The game eases the camera's FOV in cars and never stops easing
+  after the first car, which the old way (widening the final FOV only when
+  it matched the wanted one) gave up on. The FOV is now widened where the
+  follow camera sets it, so on foot and driving (top speed included) get the
+  same widening.
+- A hook the mod loader refuses now switches off only its own tweak (logged
+  as "juiced: couldn't hook ...") instead of stopping the whole menu.
+- Free camera in cars is on the Driving camera page again (since 2.4 it had
+  ended up at the bottom of the Vehicles tab).
+
 ## 2.4.3
 
 - Holding Back (Select/Share) no longer opens the menu: it got in the way
