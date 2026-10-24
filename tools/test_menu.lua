@@ -1524,6 +1524,36 @@ do
   assert(math.abs(F.items.fov.v - 1.2) < 1e-6 and F.items.crouch_moving.v and F.items.car_free_cam.v, "restore menu defaults (mod.ini)")
   local none = F.items.restore_game.open(); F.activate(make_ctx(), none.rows[1]); update(1)
 
+  -- Menu background: a box under the plain text menu while it's open, as solid as the setting; none when Off.
+  local GUI = require("gameui")
+  if not MENU.is_open() then press("F5") end
+  F.items.menu_background.v = 60; update(1)
+  local bd = GUI.backdrop
+  assert(bd and bd.colour[4] == 153 and bd.w > 300 and bd.h > 150 and bd.x > 0 and bd.y > 0, "menu background box")
+  F.items.menu_background.v = 0; update(1)
+  assert(GUI.backdrop == nil, "no box when Off")
+  press("F5"); update(1)
+  assert(GUI.backdrop == nil, "no box with the menu closed")
+  F.items.menu_background.v = 60
+
+  -- Over-the-shoulder camera: eased in to the full move along the camera's right and forward rows, no drift
+  -- while the game leaves the position alone, eased back out when switched off.
+  put_in_vehicle(false)
+  local CAMX = 0x827D9778
+  write_u32(CAMX, 0); write_u32(0x827DA15C, 6); write_f32(0x827D93C0, 3)
+  write_f32(CAMX + 80, 1); write_f32(CAMX + 84, 0); write_f32(CAMX + 88, 0)
+  write_f32(CAMX + 104, 0); write_f32(CAMX + 108, 0); write_f32(CAMX + 112, 1)
+  write_f32(CAMX + 44, 10); write_f32(CAMX + 48, 5); write_f32(CAMX + 52, 10)
+  F.items.shoulder_cam.v = true; F.items.shoulder_side.v = 0.6; F.items.shoulder_closer.v = 0.8
+  local cam = make_ctx()   -- the game's own camera update leaves the position where it is
+  for _ = 1, 80 do hooks[0x82109608](cam) end
+  assert(math.abs(read_f32(CAMX + 44) - 10.6) < 0.01 and math.abs(read_f32(CAMX + 52) - 10.8) < 0.01
+    and math.abs(read_f32(CAMX + 48) - 5) < 0.001, "shoulder camera moved, without drift: "
+    .. read_f32(CAMX + 44) .. " " .. read_f32(CAMX + 52))
+  F.items.shoulder_cam.v = false
+  for _ = 1, 80 do hooks[0x82109608](cam) end
+  assert(math.abs(read_f32(CAMX + 44) - 10) < 0.01 and math.abs(read_f32(CAMX + 52) - 10) < 0.01, "shoulder camera eased out")
+
   -- Saved places: save where you stand, rename (typing and the letter list), go there facing the saved way, delete.
   write_f32(P + 20, 120.5); write_f32(P + 24, 15.25); write_f32(P + 28, -340.75)
   for i = 0, 8 do write_f32(P + 32 + i * 4, (i % 4 == 0) and 1 or 0) end

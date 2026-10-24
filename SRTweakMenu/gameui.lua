@@ -172,6 +172,16 @@ G.hook(PASS_2D, function(ctx)
     if not ok then wml.log("screen effects: drawing failed: " .. tostring(err)); UI.overlay = nil end
   end
   ctx:call_original()
+  -- The plain text menu's box (menu.lua sets UI.backdrop): drawn here, in the
+  -- game's own frame, so the overlay text lands on top of it.
+  local bd = UI.backdrop
+  if bd and UI.ok then
+    local ok, err = pcall(function()
+      local s, ox, oy = screen()
+      draw_quad(ctx, bd, s, ox, oy)
+    end)
+    if not ok then wml.log("menu background: drawing failed: " .. tostring(err)); UI.backdrop = nil end
+  end
   local fr = UI.frame
   if not fr or not UI.ok then return end
   local ok, err = pcall(function()

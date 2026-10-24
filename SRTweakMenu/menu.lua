@@ -774,7 +774,40 @@ function M.set_style(name)
 end
 function M.style() return style_game and "game" or "text" end
 
+-- The plain text menu's box. The text is drawn by Saints Reborn's overlay at
+-- (40, 120) x S pixels in a font 26 x S tall (S = window height / 1080, at
+-- least 0.75), white with a shadow and no box; in the game's 1280 x 720
+-- layout that is (26.7, 80) and 17.3 tall. The box is drawn under it in
+-- the game's own frame (gameui.lua), as wide as the longest line, measured
+-- with Segoe UI Bold's character widths (in ems).
+local function em_width(line)
+  local w = 0
+  for c in line:gmatch(".") do
+    if c == " " then w = w + 0.27
+    elseif c:match("[ilj|!.,:;'`]") then w = w + 0.27
+    elseif c:match("[ftrI%[%]%(%)%-/]") then w = w + 0.38
+    elseif c:match("[mwMW]") then w = w + 0.86
+    elseif c:match("%u") then w = w + 0.66
+    elseif c:match("%d") then w = w + 0.56
+    elseif c:match("[<>=+_~]") then w = w + 0.58
+    else w = w + 0.55 end
+  end
+  return w
+end
+local TEXT_X, TEXT_Y, TEXT_SIZE = 40 * 2 / 3, 120 * 2 / 3, 26 * 2 / 3
+local function backdrop(lines)
+  local opacity = F.items.menu_background and F.items.menu_background.v or 0
+  if opacity <= 0 then return nil end
+  local widest = 0
+  for _, l in ipairs(lines) do widest = math.max(widest, em_width(l)) end
+  local pad = TEXT_SIZE * 0.7
+  return { image = "ui_menu_box_base_c", x = TEXT_X - pad, y = TEXT_Y - pad * 0.7,
+    w = widest * TEXT_SIZE + pad * 2, h = #lines * TEXT_SIZE + pad * 1.6,
+    colour = { 128, 128, 128, math.floor(opacity / 100 * 255 + 0.5) } }
+end
+
 function M.render(tick)
+  GAMEUI.backdrop = nil
   if M.open and style_game and GAMEUI.ready() and M.ctx then
     local ok, fr = pcall(M.build_frame, M.ctx)
     if ok then
@@ -834,6 +867,7 @@ function M.render(tick)
       lines[#lines + 1] = (i == STATUS_LINES and #wrapped > STATUS_LINES) and (wrapped[i]:sub(1, HELP_WIDTH - 4) .. " ...") or wrapped[i]
     end
   end
+  GAMEUI.backdrop = backdrop(lines)
   mailbox_write(table.concat(lines, "\n"))
 end
 
@@ -847,6 +881,11 @@ F.add_rows("Settings", "master", {
       M.set_style(it.v == 2 and "game" or "text")
       if F.ADDONS then F.ADDONS.save_setting(wml.mod_folder .. "/mod.ini", "menu_style", M.style()) end
     end },
+  { id = "menu_background", label = "Menu background", kind = "value", needs = "none", default = 0, min = 0, max = 100, step = 10,
+    v = S("menu_background", 60),
+    fmt = function(v) return v <= 0 and "Off" or string.format("%d%%", v) end,
+    hidden = function() return style_game end,
+    help = "A dark box behind the plain text menu, so it reads on any background: how solid it is (Off = no box)." },
 })
 
 function M.is_open() return M.open end

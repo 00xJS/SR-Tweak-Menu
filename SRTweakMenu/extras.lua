@@ -449,6 +449,35 @@ local function first_person_showing()
   return (cx - px) ^ 2 + (cz - pz) ^ 2 < 0.8 * 0.8 and dy > 0.4 and dy < 2.2
 end
 
+-- ================================================================ shoulder camera
+--
+-- On foot the follow camera looks at the player from straight behind (its
+-- presets at 0x827D9ED8 have a look-at height, pitch limits and the field of
+-- view, nothing sideways). Over the shoulder, as in GTA: after each camera
+-- update the camera's position (+44) is moved along its own right row (+80)
+-- and towards where it looks (+104), so the player stands off to one side
+-- and the aim stays in the middle. Before the next update that move is
+-- taken back off, so the game's camera keeps easing from its own place.
+-- Only the normal on-foot presets (6, 15 to 18; not 12, aiming, which the
+-- aim add-ons handle, nor 13, swimming), the follow camera (type 0), not in
+-- first person or the menu's free and fitting-room cameras. The move isn't
+-- tested against walls: standing with a wall close on that side the camera
+-- can look through it.
+local CAMERA_PRESET = 0x827DA15C
+local SHOULDER_PRESETS = { [6] = true, [15] = true, [16] = true, [17] = true, [18] = true }
+local CAM_RIGHT, CAM_FORWARD = 80, 104
+local shoulder_last = nil   -- the move applied after the last update { dx, dy, dz }
+local shoulder_blend = 0    -- 0..1, eased in and out so aiming, cars and cutscenes don't snap
+local FREECAM = require("freecam")
+local function shoulder_wanted()
+  if not F.enabled or not F.items.shoulder_cam.v then return false end
+  local p = G.player()
+  if p == 0 or G.vehicle_object(p) or G.in_cutscene() then return false end
+  if read_u32(G.CAMERA) ~= 0 or not SHOULDER_PRESETS[read_u32(CAMERA_PRESET)] then return false end
+  if FREECAM.on or FREECAM.orbiting or read_f32(CAMERA_FADE_RADIUS) == 0 then return false end
+  return true
+end
+
 -- ================================================================ give items
 --
 -- The weed, booze, drinks and food from the stores (drugs.xtbl) load into
@@ -549,6 +578,21 @@ function E.setup(features)
       fmt = function(v) return string.format("%d deg", math.floor(v + 0.5)) end,
       help = "How wide you see in first person (V): wider shows more of your arms, your gun as it fires and what's around you. First Person's own is " .. fp_default .. ".",
       update = function() end },
+    { id = "shoulder_cam", label = "Over-the-shoulder camera", kind = "toggle", needs = "none", v = S("shoulder_camera", false),
+      help = "Walking around, the camera sits over your shoulder like GTA: you to one side, the aim in the middle. Aiming keeps the aim style's own camera." },
+    { id = "shoulder_side", label = "Shoulder offset", kind = "value", needs = "none", default = 0.6, min = -1.5, max = 1.5, step = 0.1,
+      v = S("shoulder_offset", 0.6), oneshot = true,
+      fmt = function(v)
+        if math.abs(v) < 0.05 then return "centred" end
+        return string.format("%.1f m %s", math.abs(v), v > 0 and "right" or "left")
+      end,
+      hidden = function() return not F.items.shoulder_cam.v end,
+      help = "How far to the side the camera sits: right puts you on the left of the screen, left on the right." },
+    { id = "shoulder_closer", label = "Shoulder camera closer", kind = "value", needs = "none", default = 0.8, min = -1.0, max = 2.0, step = 0.1,
+      v = S("shoulder_closer", 0.8), oneshot = true,
+      fmt = function(v) return string.format("%+.1f m", v) end,
+      hidden = function() return not F.items.shoulder_cam.v end,
+      help = "How much closer to you the camera comes (negative: further back)." },
   })
 
   local district_rows = {
@@ -711,11 +755,35 @@ function E.install(menu)
     elseif (pressed & PAD_UP) ~= 0 and mode >= 3 then taunt.want = 1 end
   end)
 
-  hook(CAMERA_UPDATE, "first person field of view", function(ctx)
+  hook(CAMERA_UPDATE, "first person field of view and shoulder camera", function(ctx)
+    -- (the shoulder camera's last move off again, so the game eases from its own place)
+    if shoulder_last and read_u32(G.CAMERA) == 0 and not FREECAM.on and not FREECAM.orbiting then
+      local x, y, z = G.vec(G.CAMERA + CAM_POS)
+      write_f32(G.CAMERA + CAM_POS, x - shoulder_last[1])
+      write_f32(G.CAMERA + CAM_POS + 4, y - shoulder_last[2])
+      write_f32(G.CAMERA + CAM_POS + 8, z - shoulder_last[3])
+    end
+    shoulder_last = nil
     ctx:call_original()
     local it = F.items.fp_fov
-    if not F.enabled or it.v == it.default then return end
-    if first_person_showing() then write_f32(G.CAMERA + CAM_FOV, it.v) end
+    if F.enabled and it.v ~= it.default and first_person_showing() then write_f32(G.CAMERA + CAM_FOV, it.v) end
+    local want = shoulder_wanted()
+    shoulder_blend = shoulder_blend + ((want and 1 or 0) - shoulder_blend) * 0.12
+    if shoulder_blend < 0.01 then shoulder_blend = 0 end
+    if read_f32(CAMERA_FADE_RADIUS) == 0 then shoulder_blend = 0 end   -- (first person: its camera, no move)
+    if shoulder_blend > 0 and read_u32(G.CAMERA) == 0 and not FREECAM.on and not FREECAM.orbiting then
+      local side, closer = F.items.shoulder_side.v * shoulder_blend, F.items.shoulder_closer.v * shoulder_blend
+      local rx, ry, rz = G.vec(G.CAMERA + CAM_RIGHT)
+      local fx, fy, fz = G.vec(G.CAMERA + CAM_FORWARD)
+      local dx, dy, dz = rx * side + fx * closer, ry * side + fy * closer, rz * side + fz * closer
+      if dx == dx and dy == dy and dz == dz and dx * dx + dy * dy + dz * dz < 25 then
+        local x, y, z = G.vec(G.CAMERA + CAM_POS)
+        write_f32(G.CAMERA + CAM_POS, x + dx)
+        write_f32(G.CAMERA + CAM_POS + 4, y + dy)
+        write_f32(G.CAMERA + CAM_POS + 8, z + dz)
+        shoulder_last = { dx, dy, dz }
+      end
+    end
   end)
 
   hook(CREW_WEAPON, "notoriety crews without guns", function(ctx)

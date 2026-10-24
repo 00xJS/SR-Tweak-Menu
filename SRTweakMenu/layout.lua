@@ -64,8 +64,8 @@ local TABS = {
       { "district", "district_owner", "district_apply", "explore_map" }) } },
   { "Visual", {
     "hide_hud", "map_arrow", "letterbox", "filter", "render_mode", "saturation",
-    page("visual_camera", "Camera", "Field of view, first person and its field of view, and camera turn speed.",
-      { "fov", "first_person", "fp_fov", "camera_turn" }),
+    page("visual_camera", "Camera", "Field of view, the over-the-shoulder camera, first person and its field of view, and camera turn speed.",
+      { "fov", "shoulder_cam", "shoulder_side", "shoulder_closer", "first_person", "fp_fov", "camera_turn" }),
     page("visual_free_camera", "Free camera", "Fly the camera or leave it on a shot, and freeze the world.",
       { "free_cam", "cam_mode", "freeze_world" }),
     "settings_ui_plus" } },

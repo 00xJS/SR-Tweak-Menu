@@ -25,7 +25,7 @@ local CHOICE_DEFAULTS = {
   weapon_dpad = 1, weapon_tap = 1, punch_blast = 2, line_rate = 3, missing_moves = 1, loose_parts = 2, look_pose = 1,
 }
 -- Numbers that only say how much of something to do now, not a setting.
-local NOT_SETTINGS = { give_item_count = true }
+local NOT_SETTINGS = { give_item_count = true, menu_background = true }
 
 local function game_default(it)
   if it.kind == "toggle" then return false end

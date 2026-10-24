@@ -1,5 +1,17 @@
 # SR Tweak Menu - changes
 
+## 2.6.1
+
+- Settings > **Menu background**: a dark box behind the plain text menu, so
+  it reads on any background, Off to 100% (mod.ini menu_background, 60 at
+  start). It's drawn in the game's own frame under the overlay text, sized
+  to the menu's lines.
+- Visual > Camera > **Over-the-shoulder camera**: on foot the camera sits
+  over your shoulder like GTA, you to one side and the aim in the middle,
+  with **Shoulder offset** (left or right) and **Shoulder camera closer**.
+  It eases in and out; aiming, cars, cutscenes, first person and the free
+  camera keep their own.
+
 ## 2.6.0
 
 - Weapons > **Give item**: weed, booze, drinks and food as the stores sell
