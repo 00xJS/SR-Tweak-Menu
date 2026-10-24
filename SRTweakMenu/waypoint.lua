@@ -315,7 +315,7 @@ end
 -- ----------------------------------------------------------------- hooks
 
 -- The pause map setting the player's waypoint.
-wml.hook(GPS_SET, function(ctx)
+G.hook(GPS_SET, function(ctx)
   local from_map = W.enabled and ctx:lr() == MAP_SET_CALL and (ctx:r(5) & 0xFF) == 0
   local x, y, z
   if from_map then x, y, z = vec(ctx:r(4)) end

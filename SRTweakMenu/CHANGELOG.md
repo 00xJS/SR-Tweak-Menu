@@ -1,5 +1,15 @@
 # SR Tweak Menu - changes
 
+## 2.5.1
+
+- The menu starts on every PC again. When the mod loader couldn't hook one
+  of the game functions the menu uses (which ones depends on the build of
+  saintsrow.exe a PC runs; one player's refused the HUD notoriety meter at
+  0x82481990), the error stopped the whole menu from loading, so F5 and
+  R1 + D-pad Down did nothing. Every hook now switches off only what needs
+  it, logged as "couldn't hook ...", and the rest of the menu works. The
+  menu test simulates that refused hook.
+
 ## 2.5.0
 
 New rows after Saints Row (2006) mods on saintsrowmods.com. Each one is

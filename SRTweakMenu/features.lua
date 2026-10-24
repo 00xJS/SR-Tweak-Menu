@@ -1475,7 +1475,7 @@ do
   local SUBMIT, WARNING_ID = 0x821FE3E8, 0x827ACCF4
   local LENGTH, SHARE = 1.32, 0.3
   local echoes, step, last_update = {}, 0, nil
-  wml.hook(SUBMIT, function(ctx)
+  G.hook(SUBMIT, function(ctx)
     local req = ctx:r(4) & 0xFFFFFFFF
     local item = F.items.low_health_echo
     if not F.echoing and item and item.v == true and G.pointer_ok(req) then
@@ -1829,7 +1829,7 @@ local function own_breath_call(ctx, saying)
   write_u32(p + G.PERSONA_NOW, was)
   return true
 end
-wml.hook(G.SAY_LINE, function(ctx)
+G.hook(G.SAY_LINE, function(ctx)
   if (ctx:r(4) & 0xFFFFFFFF) == 70 and (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then F.voice.screamed_at = F.tick end
   if own_breath_call(ctx, true) then return end
   local M = F.model
@@ -1854,7 +1854,7 @@ end)
 
 -- The line is picked for its situation at 0x8221AC00(human, situation, ...),
 -- so the praise swap happens there.
-wml.hook(G.PLAY_LINE, function(ctx)
+G.hook(G.PLAY_LINE, function(ctx)
   if own_breath_call(ctx) then return end
   local situation = ctx:r(4) & 0xFFFFFFFF
   if F.model.name and situation >= 36 and situation <= 49 then
@@ -1865,7 +1865,7 @@ wml.hook(G.PLAY_LINE, function(ctx)
   ctx:call_original()
 end)
 
-wml.hook(G.RELOAD, function(ctx)
+G.hook(G.RELOAD, function(ctx)
   local human = ctx:r(3) & 0xFFFFFFFF
   if human ~= 0 and human == read_u32(G.PLAYER) then F.character_line("combat - reload required", 500) end
   if F.on("no_reload") and human ~= 0 and human == read_u32(G.PLAYER) then
@@ -2156,7 +2156,7 @@ do
     end
   end
 
-  wml.hook(G.BULLET_RAY, function(ctx)
+  G.hook(G.BULLET_RAY, function(ctx)
     local out, shooter = ctx:r(3) & 0xFFFFFFFF, ctx:r(5) & 0xFFFFFFFF
     ctx:call_original()
     if not F.on("money_gun") or #bills >= 8 then return end
@@ -2219,7 +2219,7 @@ do
   local queue, last = {}, -1
   local BLASTS = { "Propane Tank", "Grenade", "RPG", "Big Bang" }
   local GAP = 0.5   -- seconds between blasts
-  wml.hook(G.MELEE_HIT, function(ctx)
+  G.hook(G.MELEE_HIT, function(ctx)
     local target, attacker = ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF
     ctx:call_original()
     if not F.on("explosive_punch") or #queue >= 2 then return end
@@ -2389,7 +2389,7 @@ function F.restore_guns()
   return all
 end
 
-wml.hook(G.FIRE, function(ctx)
+G.hook(G.FIRE, function(ctx)
   local shooter = ctx:r(3) & 0xFFFFFFFF
   local p = read_u32(G.PLAYER)
   local info = (shooter ~= 0 and shooter == p and F.on("rocket_ammo") and not G.vehicle_object(p)) and F.gun_info(p) or nil
@@ -3066,7 +3066,7 @@ local function melee_groups()
   return family
 end
 
-wml.hook(G.ANIM_LOOKUP, function(ctx)
+G.hook(G.ANIM_LOOKUP, function(ctx)
   local m = F.move
   local set = ctx:r(3) & MASK
   if set ~= m.srt or set == 0 then ctx:call_original() return end
@@ -3606,7 +3606,7 @@ function F.set_fitting(p, on)
   Fi.on = Fi.player ~= 0
 end
 
-wml.hook(G.POSE_BUILD, function(ctx)
+G.hook(G.POSE_BUILD, function(ctx)
   local Fi = F.fitting
   if Fi.on and (ctx:r(3) & MASK) == Fi.player then
     local base = ctx:r(4) & MASK
@@ -5117,7 +5117,7 @@ end)()
 
 -- Made for a mix: the variation the game rolls is this copy.
 F.look_synth = nil
-wml.hook(G.VARIANT_ROLL, function(ctx)
+G.hook(G.VARIANT_ROLL, function(ctx)
   local s = F.look_synth
   if s then F.look_synth = nil; ctx:set_r(4, s) end
   ctx:call_original()
@@ -5150,7 +5150,7 @@ end
 -- Any reference to it given back by something else is taken again at once
 -- (and given back with ours when you change back), so the count never
 -- reaches nothing while you wear it.
-wml.hook(G.STREAM_RELEASE, function(ctx)
+G.hook(G.STREAM_RELEASE, function(ctx)
   local M = F.model
   local group, id, kind = ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF, ctx:r(5) & 0xFFFFFFFF
   local foreign = M.name and M.ref and id == M.ref and not F.own_release
@@ -5313,7 +5313,7 @@ F.read_outfit, F.worn_count = read_outfit, worn_count
 -- someone else's model those shapes crumple the face (and every copy of
 -- that model in the world shares it), so while you're someone else the
 -- bake doesn't run. Your sliders themselves are never changed.
-wml.hook(G.SLIDER_BAKE, function(ctx)
+G.hook(G.SLIDER_BAKE, function(ctx)
   local M = F.model
   if M.name and M.def then
     local p = read_u32(G.PLAYER)
@@ -6417,7 +6417,7 @@ end
 -- The HUD meter: when Saints notoriety is the highest, the meter shows the
 -- Saints slot, with the Saints logo, in purple.
 local saints_meter, saints_drawing = false, false
-wml.hook(G.NOTORIETY_PICK, function(ctx)
+G.hook(G.NOTORIETY_PICK, function(ctx)
   local p = ctx:r(3) & MASK
   ctx:call_original()
   saints_meter = false
@@ -6432,7 +6432,7 @@ wml.hook(G.NOTORIETY_PICK, function(ctx)
     ctx:set_r(3, 1)          -- a gang the meter is drawn for; slot 0 is drawn as the Saints
   end
 end)
-wml.hook(G.NOTORIETY_METER, function(ctx)
+G.hook(G.NOTORIETY_METER, function(ctx)
   if not saints_meter or (ctx:r(4) & MASK) ~= 0 then ctx:call_original() return end
   ctx:set_r(4, 3)
   local icons = G.NOTORIETY_ICONS + 4 * 4
@@ -6443,7 +6443,7 @@ wml.hook(G.NOTORIETY_METER, function(ctx)
   saints_drawing = false
   write_u32(icons, icon_was)
 end)
-wml.hook(G.DRAW_COLOR, function(ctx)
+G.hook(G.DRAW_COLOR, function(ctx)
   if saints_drawing then ctx:set_r(3, 150); ctx:set_r(4, 70); ctx:set_r(5, 220) end
   ctx:call_original()
 end)
@@ -6459,11 +6459,11 @@ local function with_dot(slot, image, ctx)
   ctx:call_original()
   write_u32(slot, was)
 end
-wml.hook(G.DOT_SAINT, function(ctx)
+G.hook(G.DOT_SAINT, function(ctx)
   if not F.on("saints_enemies") then ctx:call_original() return end
   with_dot(G.DOT_IMAGES + 16, read_u32(G.DOT_IMAGES + 12), ctx)          -- red
 end)
-wml.hook(G.DOT_GANG, function(ctx)
+G.hook(G.DOT_GANG, function(ctx)
   local p = read_u32(G.PLAYER)
   if not F.on("saints_enemies") or p == 0 or not G.pointer_ok(p) then ctx:call_original() return end
   local person = (ctx:r(3) & MASK) - 20
@@ -6495,12 +6495,12 @@ function F.arrow_colour(ctx, person)
   end
   return GREY, true
 end
-wml.hook(G.FOLLOWER_ARROWS, function(ctx)
+G.hook(G.FOLLOWER_ARROWS, function(ctx)
   F.arrows.on = true
   ctx:call_original()
   F.arrows.on, F.arrows.edge = false, nil
 end)
-wml.hook(G.ARROW_TINT, function(ctx)
+G.hook(G.ARROW_TINT, function(ctx)
   local A = F.arrows
   if A.on and ctx:f(1) == 160 and ctx:f(2) == 0 and ctx:f(3) == 255 then
     local c, edge = F.arrow_colour(ctx, (ctx:r(31) & MASK) - 20)
@@ -6509,7 +6509,7 @@ wml.hook(G.ARROW_TINT, function(ctx)
   end
   ctx:call_original()
 end)
-wml.hook(G.DRAW_BITMAP, function(ctx)
+G.hook(G.DRAW_BITMAP, function(ctx)
   local A = F.arrows
   if A.on and A.edge and not A.busy and (ctx:r(3) & MASK) == read_u32(G.ARROW_IMAGE) then
     local alpha = math.max(0, math.min(255, math.floor(A.edge)))
@@ -6564,7 +6564,7 @@ local function stock_path(path)
   put(#text - 3, ".mp3")
   return true
 end
-wml.hook(G.MUSIC_PLAYLIST, function(ctx)
+G.hook(G.MUSIC_PLAYLIST, function(ctx)
   local songs, count = ctx:r(4) & MASK, ctx:r(5) & MASK
   if G.pointer_ok(songs) and count > 0 and count < 4096 then
     local switched = 0
@@ -6653,7 +6653,7 @@ local function track_song(songs)
   if F.debug then wml.log(string.format("music: '%s', %s", text, length and string.format("%.1f s", length) or "length unknown")) end
 end
 F.track_song = track_song
-wml.hook(XMP_SET_VOLUME, function(ctx)
+G.hook(XMP_SET_VOLUME, function(ctx)
   if ctx:f(1) >= 0.999 then ctx:set_f(1, 0.999) end
   ctx:call_original()
 end)

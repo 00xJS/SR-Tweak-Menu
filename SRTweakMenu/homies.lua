@@ -86,7 +86,7 @@ local function limit() return math.max(0, math.min(LIST_MAX, math.floor(H.limit 
 -- ------------------------------------------------------------ party maximum
 local hud_pass = false
 local last_logged = nil
-wml.hook(PARTY_MAX, function(ctx)
+G.hook(PARTY_MAX, function(ctx)
   local p = ctx:r(3)
   ctx:call_original()
   if hud_pass then ctx:set_r(3, 0) return end
@@ -103,7 +103,7 @@ end)
 
 if not H.standalone then
   -- ---------------------------------------------------------- street recruit
-  wml.hook(RECRUIT_ONE, function(ctx)
+  G.hook(RECRUIT_ONE, function(ctx)
     local p, npc = ctx:r(3), ctx:r(4)
     if not in_single_player(p) or npc == 0 then ctx:call_original() return end
     local count = to_int(read_u32(p + COUNT))
@@ -126,7 +126,7 @@ if not H.standalone then
       write_u32(a + i, y); write_u32(b + i, x)
     end
   end
-  wml.hook(HUD_HEADS, function(ctx)
+  G.hook(HUD_HEADS, function(ctx)
     local p = ctx:r(3)
     local alpha = ctx:f(1)
     ctx:call_original()

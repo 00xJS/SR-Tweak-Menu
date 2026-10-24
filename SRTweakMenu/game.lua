@@ -560,6 +560,21 @@ function G.call(ctx, fn, args, f, stack)
   return r3, f1
 end
 
+-- Hooks a game function like wml.hook. A hook the loader refuses (it can't
+-- detour every compiled function, and which ones depends on the build of
+-- saintsrow.exe a PC runs) switches off only what uses it, logged, and the
+-- menu still starts. (The loader's own error can itself fail to format, so
+-- it's caught.) G.broken[address] is true for the refused ones.
+G.broken = {}
+function G.hook(addr, fn)
+  local ok, err = pcall(wml.hook, addr, fn)
+  if not ok then
+    G.broken[addr] = true
+    wml.log(string.format("couldn't hook %08X (%s) - what uses it is off, the rest of the menu works", addr, tostring(err)))
+  end
+  return ok
+end
+
 -- Runs a line of the game's debug console ("super_ragdoll", "R_wireframe on").
 -- Returns true on success. Names are case-sensitive.
 function G.console(ctx, line)

@@ -160,7 +160,7 @@ end
 
 -- The game's 2D pass, then the menu's picture list.
 local failures = 0
-wml.hook(PASS_2D, function(ctx)
+G.hook(PASS_2D, function(ctx)
   -- The screen effects (low health, low sprint) first, so the game's HUD,
   -- its notices and subtitles are drawn over them; the menu last, on top.
   local ov = UI.overlay

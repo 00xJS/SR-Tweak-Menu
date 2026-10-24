@@ -204,17 +204,19 @@ end
 -- draws through the overlay only there; look like it on any host.
 package.config = "\\" .. package.config:sub(2)
 os.remove(TMP .. "/saved_tweaks.ini"); os.remove(TMP .. "/quicksave.dat"); os.remove(TMP .. "/saved_places.txt")
--- The loader refuses one hook (as it did for 0x8210C3F8 in game, with an
--- error that itself failed to format): only that tweak goes, the menu loads.
+-- The loader refuses some hooks (as it did for 0x8210C3F8 here, and for the
+-- notoriety meter 0x82481990 on a player's PC, with an error that itself
+-- failed to format): only what needs them goes, the menu loads and opens.
 do
   local real_hook = wml.hook
   wml.hook = function(addr, f)
-    if addr == 0x82533DA8 then error("invalid option '%0' to 'lua_pushfstring'") end
+    if addr == 0x82533DA8 or addr == 0x82481990 then error("invalid option '%0' to 'lua_pushfstring'") end
     return real_hook(addr, f)
   end
 end
 dofile(folder .. "/main.lua")
 assert(require("juiced").broken["brake lights"], "a refused hook should only switch off its own tweak")
+assert(require("game").broken[0x82481990], "a refused hook in features.lua should only switch off what uses it")
 assert(hooks[0x82209E30], "update hook missing")
 assert(hooks[0x82788EC4], "input hook missing")
 assert(hooks[0x824470D0], "damage hook missing")

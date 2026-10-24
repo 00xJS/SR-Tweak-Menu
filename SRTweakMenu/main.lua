@@ -253,7 +253,7 @@ end
 local stop_hold, stop_press = MENU.parse_combo(tostring(wml.setting("stop_pad", "RB+UP")))
 if not stop_hold then stop_hold, stop_press = MENU.parse_combo("RB+UP") end
 local stop_prev = 0
-wml.hook(G.INPUT_GET_STATE, function(ctx)
+G.hook(G.INPUT_GET_STATE, function(ctx)
   local user, state = ctx:r(3), ctx:r(5)
   ctx:call_original()
   if user ~= 0 then return end
@@ -308,7 +308,7 @@ end)
 -- 0x824470D0(victim, attacker, ..., f1 = damage); f1 = -1 means kill.
 -- God mode also covers what the invulnerability flag lets through: an
 -- explosion's fire on you, and the damage it does.
-wml.hook(G.IGNITE, function(ctx)
+G.hook(G.IGNITE, function(ctx)
   if F.on("god") and not F.killing_self and (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then ctx:set_r(3, 0) return end
   ctx:call_original()
 end)
@@ -325,7 +325,7 @@ local function log_damage(p, asked, before)
 end
 
 local blocked_logged = 0
-wml.hook(G.TAKE_DAMAGE, function(ctx)
+G.hook(G.TAKE_DAMAGE, function(ctx)
   local p0 = read_u32(G.PLAYER)
   local before = debug and p0 ~= 0 and (ctx:r(3) & 0xFFFFFFFF) == p0 and read_f32(p0 + G.P.HEALTH)
   if F.on("god") and not F.killing_self and (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then
@@ -368,7 +368,7 @@ end)
 --
 -- Explosions damage a car part by part through 0x825447D0 (part, vehicle);
 -- for the car you drive with Vehicle god mode on, nothing is broken.
-wml.hook(G.VEHICLE_PART_DAMAGE, function(ctx)
+G.hook(G.VEHICLE_PART_DAMAGE, function(ctx)
   if F.on("veh_god") then
     local p = G.player()
     local v = p ~= 0 and G.vehicle_object(p)
@@ -384,7 +384,7 @@ end)
 -- model out of memory it only hides them until the model is back. (Its
 -- "may I delete this person" check is the one that keeps mission people.)
 -- Once dead they are the game's to clear away like anyone else.
-wml.hook(G.CAN_DESPAWN, function(ctx)
+G.hook(G.CAN_DESPAWN, function(ctx)
   local h = ctx:r(3) & 0xFFFFFFFF
   if h ~= 0 and F.our_people[read_u32(h + 68)] ~= nil and wml.read_f32(h + G.P.HEALTH) > 0 then ctx:set_r(3, 0) return end
   ctx:call_original()
@@ -401,7 +401,7 @@ wml.on_frame(function()
 end)
 
 -- ------------------------------------------------------------ the update
-wml.hook(G.UPDATE, function(ctx)
+G.hook(G.UPDATE, function(ctx)
   FREECAM.before_update()
   JUICED.before(ctx)
   ctx:call_original()
@@ -562,6 +562,9 @@ wml.hook(G.UPDATE, function(ctx)
     last_pos = { x + ex, y, z + ez }
   end
 end)
+if G.broken[G.UPDATE] then
+  wml.log("SR Tweak Menu can't run here: the loader can't hook the game update (82209E30) in this saintsrow.exe")
+end
 
 wml.log(string.format("SR Tweak Menu: run x%.2f, jump x%.2f, rapid fire %s; menu key %s (debug=%s)", F.items.run_speed.v, F.items.jump_boost.v,
   F.items.fire.v and (fire_rate .. "/s") or "off", tostring(wml.setting("menu_key", "F5")), tostring(debug)))
