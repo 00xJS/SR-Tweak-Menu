@@ -11,6 +11,9 @@
 --   gameplay_constants     Ragdoll_Melee_Impulse_Multiplier (optional)
 --   GML_CUST.xtbl          adds the empty SRT_Player animation set the
 --                          Movement style menu gives the player
+--   unlockables.xtbl       adds the srt_* rewards Settings > Unlocks can
+--                          give (free shopping, bulletproof ...); nothing
+--                          has them until you pick one
 --
 -- Every number comes from [settings] in mod.ini; at their defaults only
 -- Nitro_Capable changes. Everything else is switched live in the menu.
@@ -330,6 +333,63 @@ do
   end
 end
 
+-- ------------------------------------------------------------- rewards
+--
+-- New rewards for Settings > Unlocks (extras.lua), each a copy of one of
+-- the game's own rows of the same kind with its name and amount changed:
+-- { new name, row copied, amount, store for a discount }. A discount of 1
+-- is everything free; a damage reward of 100 is all of that damage gone;
+-- a notoriety reward is how much faster it fades (the game's own give 5).
+local REWARDS = {
+  { "srt_free_impressions", "all_hitman1", "1.0", "Impressions" },
+  { "srt_free_foreign_power", "all_hitman1", "1.0", "Foreign Power" },
+  { "srt_free_friendly_fire", "all_hitman1", "1.0", "Friendly Fire" },
+  { "srt_free_on_thin_ice", "all_hitman1", "1.0", "On Thin Ice" },
+  { "srt_free_on_the_rag", "all_hitman1", "1.0", "On the Rag" },
+  { "srt_free_rim_jobs", "all_hitman1", "1.0", "Rim Jobs" },
+  { "srt_free_sloppy_seconds", "all_hitman1", "1.0", "Sloppy Seconds" },
+  { "srt_free_branded", "all_hitman1", "1.0", "Branded" },
+  { "srt_bulletproof", "vk_fraud", "100" },
+  { "srt_blastproof", "wr_fraud", "100" },
+  { "srt_crashproof", "lc_fraud", "100" },
+  { "srt_police_forget", "all_drug", "100" },
+  { "srt_carnales_forget", "lc_drug", "100" },
+  { "srt_vice_kings_forget", "vk_drug", "100" },
+  { "srt_rollerz_forget", "wr_drug1", "100" },
+}
+local function plain(s) return (s:gsub("[%%%(%)%.%+%-%*%?%[%]%^%$]", "%%%0")) end
+local function patch_unlockables(xml)
+  if xml:find("<Name>srt_", 1, true) then return xml, 0 end
+  local nl = xml:find("\r\n", 1, true) and "\r\n" or "\n"
+  local rows = {}
+  for _, r in ipairs(REWARDS) do
+    local at = xml:find("<Name>" .. r[2] .. "</Name>", 1, true)
+    local first, last = nil, nil
+    if at then
+      local s = 1
+      while true do
+        local f = xml:find("<Unlockable>", s, true)
+        if not f or f > at then break end
+        first, s = f, f + 1
+      end
+      local _, e = xml:find("</Unlockable>", at, true)
+      last = e
+    end
+    if first and last then
+      local row = xml:sub(first, last)
+      row = row:gsub("<Name>" .. plain(r[2]) .. "</Name>", "<Name>" .. r[1] .. "</Name>", 1)
+      row = row:gsub("<Amount>[^<]*</Amount>", "<Amount>" .. r[3] .. "</Amount>", 1)
+      if r[4] then row = row:gsub("(<Discount>%s*<Name>)[^<]*(</Name>)", "%1" .. r[4]:gsub("%%", "%%%%") .. "%2", 1) end
+      rows[#rows + 1] = "\t" .. row .. nl
+    else
+      wml.log("unlockables.xtbl: no row " .. r[2] .. " to copy for " .. r[1])
+    end
+  end
+  local close = xml:find("\t</Table>", 1, true)
+  if not close or #rows == 0 then return xml, 0 end
+  return xml:sub(1, close - 1) .. table.concat(rows) .. xml:sub(close), #rows
+end
+
 -- -------------------------------------------------------------------- main
 
 local FILES = {
@@ -337,6 +397,7 @@ local FILES = {
   { "weapons.xtbl",        patch_weapons },
   { "spawn_info_ranks.xtbl", patch_ranks },
   { "gameplay_constants.xtbl", patch_constants },
+  { "unlockables.xtbl",    patch_unlockables },
   { "GML_CUST.xtbl",       patch_anim_sets },
   { "bitmap_sheets.xtbl",  patch_bitmap_sheets },
 }

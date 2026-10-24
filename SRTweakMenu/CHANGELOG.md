@@ -1,5 +1,51 @@
 # SR Tweak Menu - changes
 
+## 2.5.0
+
+New rows after Saints Row (2006) mods on saintsrowmods.com. Each one is
+switched live in the menu and puts the game's own back when off; none of
+those mods' files are used.
+
+- Weapons > **Skins**: a colour for each of 18 weapons (gold, black,
+  gunmetal, silver, white, tan, olive, green, red, blue, purple, pink). The
+  game's own textures are recoloured in memory, wood left as wood on the
+  guns that have some, and every copy of the gun changes, NPCs' too.
+  All back to the original undoes them.
+- Player > Health & damage: **No health regen** (Hardcore Edition) and
+  **Heal on D-pad down** (multiplayer's heal).
+- Player > Movement: **Sprint**: the game's own, Multiplayer (3 s), Pimp
+  (2 s) or Short (1 s, jumping costs half) (Stamina Mod).
+- Player > Notoriety: **Gang you side with** while Saints are enemies is on:
+  Vice Kings, Los Carnales, Rollerz, Police or Neutral.
+- Emotes: **D-pad taunts**: multiplayer's three taunts on D-pad left and
+  right, and up too if you like.
+- Vehicles > Handling: **Bouncy cars** (Bouncy Cars) and **Less stiff cars**
+  (Simply Less Damping), each with a strength.
+- World: **Stores open 24/7**; People: **Gangs drive ordinary cars** and
+  **Gangs and police without guns** (Saints of Rage); Drops: **Money rain**;
+  a new **Districts** page: hand any district or the whole city to a gang,
+  or back to the starting owners, and reveal the whole map.
+- Settings > Unlocks: **Unlock multiplayer clothing** and **Unlock reward
+  clothing**, and rewards kept in your save (free shopping, bulletproof,
+  explosion-proof, crash-proof, police or gangs forget fast; More Unlockable
+  Unlock Rewards). They ask first: they can't be taken back.
+- The Give weapon list uses the game's own weapon names (the K6 Krukov was
+  listed as the AR-40 Xtnd, the Vice 9 and NR4 were swapped, ...).
+- Weapon switch D-pad's second choice is now called "Left to the game": it
+  leaves left/right to the radio in a car and to D-pad taunts on foot.
+- patch.lua adds the reward rows to unlockables.xtbl (restart once after
+  installing before picking one).
+- The Emotes tab sits between Customize and Settings.
+- Visual > Camera: **First person field of view**, 50 to 120 degrees, for
+  Saints Reborn's built-in First Person (V). It starts at First Person's own.
+- Teleport > **Saved places**: save any spot (and the way you face), go
+  back to it with your car and homies, rename it (type on the keyboard, or
+  pick letters with the pad), move it to where you are, or delete it. Up to
+  50, kept in saved_places.txt.
+- Visual > Camera: **First person** switches it from the menu, and shows when
+  V has switched it. Needs First Person 1.4; with an older one it says to
+  press V.
+
 ## 2.4.4
 
 - Visual > Camera > Field of view works in cars, and keeps working after you

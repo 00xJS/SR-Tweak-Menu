@@ -25,6 +25,8 @@ SRTweakMenu/saved_looks.txt
 # the Quality of life rows' files: saved tweaks and the last quick save made
 SRTweakMenu/saved_tweaks.ini
 SRTweakMenu/quicksave.dat
+# your saved places (Teleport > Saved places)
+SRTweakMenu/saved_places.txt
 # made from the game's HUD sheets: game data, never in the repository
 SRTweakMenu/hud_images.bin
 # the copy of itsMJQ's version this was merged from

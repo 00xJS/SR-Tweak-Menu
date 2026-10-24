@@ -203,7 +203,7 @@ end
 -- The game is always the Windows build (under Wine on the Mac), and menu.lua
 -- draws through the overlay only there; look like it on any host.
 package.config = "\\" .. package.config:sub(2)
-os.remove(TMP .. "/saved_tweaks.ini"); os.remove(TMP .. "/quicksave.dat")
+os.remove(TMP .. "/saved_tweaks.ini"); os.remove(TMP .. "/quicksave.dat"); os.remove(TMP .. "/saved_places.txt")
 -- The loader refuses one hook (as it did for 0x8210C3F8 in game, with an
 -- error that itself failed to format): only that tweak goes, the menu loads.
 do
@@ -779,7 +779,7 @@ do
   assert((read_u32(P + 216) & 0x00100000) == 0, "god mode off should clear the invulnerability bit")
   local cheat_name, cheat_rounds
   FAKE[0x821F56C0] = function(ctx) cheat_name = read_cstr(read_u32(ctx.regs[3])); cheat_rounds = read_u32(ctx.regs[3] + 4) end
-  for i, w in ipairs(F.items.give_weapon.items) do if w[2] == "Vice 9" then F.items.give_weapon.v = i end end
+  for i, w in ipairs(F.items.give_weapon.items) do if w[2] == "NR4" then F.items.give_weapon.v = i end end
   F.activate(make_ctx(), F.items.give_weapon)
   assert(cheat_name == "glock" and cheat_rounds == 500, "weapon cheat args: " .. tostring(cheat_name))
   local MENU = require("menu")
@@ -1355,6 +1355,180 @@ do
   if MENU.is_open() then press("F5") end
   GAMEUI.width, GAMEUI.line_height, GAMEUI.ready = real.width, real.line_height, real.ready
   print("menu look: game frames built on " .. frames .. " tabs, switched live and back OK")
+end
+
+-- Rows after the forum mods (extras.lua): each one changes what it should
+-- and puts the game's own back when switched off.
+do
+  local F = require("features")
+  local MENU = require("menu")
+  if MENU.is_open() then press("F5") end
+  -- A name hash the fakes can tell apart.
+  local function fake_hash(s) local h = 7 for i = 1, #s do h = (h * 31 + s:byte(i)) & 0xFFFFFFFF end return h end
+  FAKE[0x82637C18] = function(ctx) ctx.regs[3] = fake_hash(read_cstr(ctx.regs[3])) end
+  FAKE[0x82637B58] = function(ctx) ctx.regs[3] = fake_hash("b:" .. read_cstr(ctx.regs[3])) end
+
+  -- No health regen: both regen rates to 0 and back.
+  write_f32(0x838F842C, 50); write_f32(0x838F8434, 25)
+  F.items.no_regen.v = true; update(1)
+  assert(read_f32(0x838F842C) == 0 and read_f32(0x838F8434) == 0, "no regen should zero both rates")
+  F.items.no_regen.v = false; update(1)
+  assert(read_f32(0x838F842C) == 50 and read_f32(0x838F8434) == 25, "regen rates back")
+
+  -- Sprint presets: Multiplayer's numbers, then the game's own; the spray-tag bonus untouched.
+  write_f32(0x8309ABE0, 1.5)
+  F.items.sprint_preset.v = 2; update(1)
+  assert(read_f32(0x8309ABE4) == 3000 and read_f32(0x8309ABDC) == 6000 and math.abs(read_f32(0x8309ABCC) - 0.2) < 1e-6,
+    "multiplayer sprint")
+  F.items.sprint_preset.v = 1; update(1)
+  assert(read_f32(0x8309ABE4) == 10000 and read_f32(0x8309ABCC) == 0, "game's own sprint back")
+  assert(read_f32(0x8309ABE0) == 1.5, "the spray-tag bonus is never written")
+
+  -- D-pad heal: the heal bit added to what the on-foot controls gave.
+  F.items.dpad_heal.v = true; update(1)
+  local c = make_ctx(); c.regs[3] = P
+  c.call_original = function() write_u32(P + 4472, 0x2404) end
+  hooks[0x82167690](c)
+  assert(read_u32(P + 4472) == 0xA404, "heal bit should be added")
+  F.items.dpad_heal.v = false; update(1)
+  write_u32(P + 4472, 0)
+
+  -- D-pad taunts: left plays taunt 2 (action 599) on the next update.
+  local played
+  FAKE[0x82444F88] = function(ctx) played = ctx.regs[4]; ctx.regs[3] = 1 end
+  write_u32(P + 1956, 0xFFFFFFFF)
+  F.items.dpad_taunts.v = 2; update(1)
+  local PAD = 0x46000000
+  c = make_ctx(); c.regs[3], c.regs[4] = 0, PAD
+  c.call_original = function() write_u16(PAD + 4, 0x4) end
+  hooks[0x827166D0](c)
+  update(1)
+  assert(played == 599, "D-pad left should play taunt 2, got " .. tostring(played))
+  F.items.dpad_taunts.v = 1; update(1)
+
+  -- Bouncy and less stiff cars, on every car in the vehicle list.
+  local INFO, ACTION, DAMPER = 0x47000000, 0x47100000, 0x47200000
+  write_u32(0x83289904, V); write_u32(V + 50308, V); write_u32(V + 50324, INFO)
+  write_u8(V + 50300, 1); write_u32(V + 224, ENGINE)
+  write_u32(ENGINE + 216, ACTION); write_f32(ACTION + 28, -20); write_f32(INFO + 652, -20)
+  write_u32(ENGINE + 72, DAMPER); write_f32(DAMPER + 8, 1); write_f32(DAMPER + 12, 3)
+  write_f32(INFO + 904, 1); write_f32(INFO + 908, 3)
+  F.items.bouncy_cars.v = true; update(5)
+  assert(read_f32(ACTION + 28) == F.items.bounce_strength.v, "bouncy cars should push cars up")
+  F.items.bouncy_cars.v = false; update(1)
+  assert(read_f32(ACTION + 28) == -20, "bouncy cars off: the car's own downforce back")
+  F.items.soft_spin.v = true; update(10)
+  assert(read_f32(DAMPER + 8) == 0.5 and read_f32(DAMPER + 12) == 1.5, "less stiff cars should halve the damping")
+  F.items.soft_spin.v = false; update(1)
+  assert(read_f32(DAMPER + 8) == 1 and read_f32(DAMPER + 12) == 3, "less stiff cars off: the table's damping back")
+
+  -- Gangs drive ordinary cars: the gang paint taken off a spawn group and a notoriety team, then put back.
+  local GROUP, REC = 0x48000000, 0x48100000
+  write_u32(0x8370D028, GROUP); write_u32(0x8370D024, 1)
+  write_u32(GROUP + 56, 1); write_u32(GROUP + 1084, REC); write_u32(REC + 4, fake_hash("Gang_LC"))
+  write_u32(0x82831C18 + 472, 0x82047BA0)
+  F.items.gang_civ_cars.v = true; update(100)
+  assert(read_u32(GROUP + 1084) == 0 and read_u32(0x82831C18 + 472) == 0, "gang paint should be taken off")
+  F.items.gang_civ_cars.v = false; update(1)
+  assert(read_u32(GROUP + 1084) == REC and read_u32(0x82831C18 + 472) == 0x82047BA0, "gang paint back")
+
+  -- Gangs and police without guns: a Thug's firearm and thrown chances to 0, melee to 100; crews get nothing.
+  local RANK = 0x829A0028
+  write_u32(0x8370D038, 1); write_u32(RANK, fake_hash("Thug"))
+  for t = 0, 6 do
+    local b = RANK + 20 + t * 204
+    write_u8(b, 10); write_u8(b + 1, 2); write_u8(b + 68, 100); write_u8(b + 136, 5)
+  end
+  F.items.no_guns.v = true; update(100)
+  assert(read_u8(RANK + 20) == 100 and read_u8(RANK + 20 + 68) == 0 and read_u8(RANK + 20 + 136) == 0, "no guns for a Thug")
+  local gave = false
+  c = make_ctx(); c.call_original = function() gave = true end
+  hooks[0x823FC7E0](c)
+  assert(not gave, "notoriety crews should get no gun")
+  F.items.no_guns.v = false; update(1)
+  assert(read_u8(RANK + 20) == 10 and read_u8(RANK + 20 + 68) == 100 and read_u8(RANK + 20 + 136) == 5, "ranks back")
+
+  -- Rewards: refused until the row is in the game's table, then queued and unlocked.
+  local unlocked
+  FAKE[0x82226738] = function(ctx) unlocked = ctx.regs[3] end
+  local pg = F.items.reward_bulletproof.open()
+  local msg = pg.rows[1].run(make_ctx())
+  assert(msg:find("Restart"), "a reward not in the table yet should ask for a restart: " .. tostring(msg))
+  write_u32(0x82B8C294 + 60, 1); write_u32(0x82B8C294 + 68, fake_hash("srt_bulletproof"))
+  pg = F.items.reward_bulletproof.open()
+  pg.rows[1].run(make_ctx()); update(10)
+  assert(unlocked == fake_hash("srt_bulletproof"), "the reward should be unlocked")
+
+  -- Money rain: bills on foot.
+  local before = 0
+  for _, a in ipairs(calls) do if a == 0x82408C58 then before = before + 1 end end
+  F.items.money_rain.v = true; update(50)
+  local after = 0
+  for _, a in ipairs(calls) do if a == 0x82408C58 then after = after + 1 end end
+  assert(after - before >= 2, "money rain should make bills")
+  F.items.money_rain.v = false; update(1)
+
+  -- First person field of view: on top of First Person's while the camera is at your head, not otherwise.
+  local CAM = 0x827D9778
+  local px, py, pz = read_f32(P + 20), read_f32(P + 24), read_f32(P + 28)
+  write_u32(CAM, 0); write_f32(0x827D93C0, 0)
+  write_f32(CAM + 44, px); write_f32(CAM + 48, py + 1.6); write_f32(CAM + 52, pz + 0.1)
+  F.items.fp_fov.v = 100; update(1)
+  c = make_ctx(); c.call_original = function() write_f32(CAM + 188, 75) end
+  hooks[0x82109608](c)
+  assert(read_f32(CAM + 188) == 100, "first person field of view should go on top")
+  write_f32(CAM + 48, py + 4); hooks[0x82109608](c)
+  assert(read_f32(CAM + 188) == 75, "third person keeps its own field of view")
+  F.items.fp_fov.v = F.items.fp_fov.default; update(1)
+  write_f32(0x827D93C0, 3)
+
+  -- First person row: refused without First Person 1.4; with it, a request in the shared block, and the row
+  -- follows First Person (V switches it too).
+  local FPS = 0x00F01000
+  write_u32(FPS, 0)
+  local msg2 = F.toggle(make_ctx(), F.items.first_person)
+  assert(not F.items.first_person.v and msg2:find("Press V"), "first person needs First Person 1.4")
+  write_u32(FPS, 0x46505357); write_u32(FPS + 4, 0); write_u32(FPS + 8, 0)
+  F.toggle(make_ctx(), F.items.first_person)
+  assert(read_u32(FPS + 8) == 1, "the menu should ask First Person to switch on")
+  update(1)
+  assert(F.items.first_person.v, "the row stays on while the request waits")
+  write_u32(FPS + 8, 0); write_u32(FPS + 4, 1); update(1)
+  assert(F.items.first_person.v, "first person on")
+  write_u32(FPS + 4, 0); update(1)
+  assert(not F.items.first_person.v, "V switched it off: the row follows")
+  write_u32(FPS, 0)
+
+  -- Saved places: save where you stand, rename (typing and the letter list), go there facing the saved way, delete.
+  write_f32(P + 20, 120.5); write_f32(P + 24, 15.25); write_f32(P + 28, -340.75)
+  for i = 0, 8 do write_f32(P + 32 + i * 4, (i % 4 == 0) and 1 or 0) end
+  local MYP = require("myplaces")
+  MYP.list = {}   -- (the walk through every row above saved one)
+  local places = F.items.saved_places.open()
+  assert(places.rows[1].label == "Save this spot", "saved places page")
+  local said = F.activate(make_ctx(), places.rows[1])
+  assert(said:find("Place 1"), "save this spot: " .. tostring(said))
+  assert(#MYP.list == 1 and math.abs(MYP.list[1].x - 120.5) < 1e-3, "the spot is saved")
+  local entry = places.rows[3].open()
+  local ren = entry.rows[2].open()
+  assert(ren.typing, "the rename page takes typing")
+  ren.rows[5].run()                       -- Clear
+  ren.type("H"); ren.type("q")
+  ren.rows[2].v = 4; F.activate(make_ctx(), ren.rows[2])   -- the letter list: D
+  ren.rows[3].run()                       -- Space
+  F.activate(make_ctx(), ren.rows[6])     -- Save name
+  assert(MYP.list[1].name == "HqD", "renamed: " .. MYP.list[1].name)
+  local f = io.open(TMP .. "/saved_places.txt", "r"); local text = f:read("a"); f:close()
+  assert(text:find("\tHqD\n"), "saved to the file")
+  write_f32(P + 20, 0); write_f32(P + 32, 0)
+  local tp
+  FAKE[0x82481000] = function(ctx) tp = { read_f32(ctx.regs[4]), read_f32(ctx.regs[4] + 8), read_f32(ctx.regs[5]) } end
+  F.activate(make_ctx(), entry.rows[1])
+  assert(tp and math.abs(tp[1] - 120.5) < 1e-3 and math.abs(tp[2] + 340.75) < 1e-3 and tp[3] == 1, "go there with the saved facing")
+  local del = entry.rows[4].open()
+  F.activate(make_ctx(), del.rows[1])
+  assert(#MYP.list == 0, "deleted")
+  print("forum rows: regen, sprint, D-pad heal and taunts, cars, gang cars, no guns, rewards and money rain OK")
 end
 
 print("OK")

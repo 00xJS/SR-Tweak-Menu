@@ -37,13 +37,13 @@ menu open.
 
 | Tab | |
 |---|---|
-| Player | Pages: **Health & damage** (god mode, no ragdoll, health multiplier, fall damage, refill health, kill yourself), **Movement** (no clip, infinite sprint, run boost, high jump, game jump height, soft landing, quick crouch, crouch while moving, swim speed), **Notoriety**, **Bodyguards** (bodyguards, character homies, squad, dismiss, homie limit 1 to 10), **Unlocks** (music, collectibles, clothing); +$50,000, +5,000 respect |
-| Emotes | Poses and actions by the game's categories (with props), **Voice Lines**, staged scenes (dance pairs, strip club, house party), repeat |
-| Weapons | Infinite ammo, no reload, rapid fire, one-hit kill, heavy knockback, perfect aim, no melee lock-on, reload in cars; **Special ammo** (rocket, fire, money gun, explosive punches); **Aiming & switching** (aim style: the game's own, Precise Aim or Fine Aim, the Precise Aim camera page, Fine Aim's zoom and spread, aim button, turning while aiming, weapon switch with its D-pad and wheel tap); give any weapon (including the Pimp Slap), give every weapon, refill all ammo |
-| Vehicles | Vehicle god mode, repair; **Toughness** (tank mode, bulletproof glass and tires, no explosion fling), **Handling** (extra grip, nitrous everywhere, extra top speed), **Look** (customize vehicle, paint, secondary colour, brake lights when stopped), **Driving camera** (free camera in cars, reset time up to never, swing-back speed, follows the nose in a slide, free drive-by camera, no swing getting in, field of view at top speed); spawn any of 79 vehicles (plus 24 blinged versions), deliver to garage, destroy |
-| World | Weather, no fog, time of day, freeze time, clear / restore streets; **People** (spawn any of 188 people, crowds, everybody dance or pose, ragdoll all, kill everyone); **Drops** (cash or weapons around you, cash drop chance) |
+| Player | Pages: **Health & damage** (god mode, no ragdoll, health multiplier, fall damage, no health regen, heal on D-pad down, refill health, kill yourself), **Movement** (no clip, infinite sprint, sprint presets, run boost, high jump, game jump height, soft landing, quick crouch, crouch while moving, swim speed), **Notoriety** (with the gang you side with), **Bodyguards** (bodyguards, character homies, squad, dismiss, homie limit 1 to 10), **Unlocks** (music, collectibles, clothing, multiplayer and reward clothing, rewards kept in your save); +$50,000, +5,000 respect |
+| Emotes | Poses and actions by the game's categories (with props), **Voice Lines**, staged scenes (dance pairs, strip club, house party), repeat, D-pad taunts |
+| Weapons | Infinite ammo, no reload, rapid fire, one-hit kill, heavy knockback, perfect aim, no melee lock-on, reload in cars; **Special ammo** (rocket, fire, money gun, explosive punches); **Aiming & switching** (aim style: the game's own, Precise Aim or Fine Aim, the Precise Aim camera page, Fine Aim's zoom and spread, aim button, turning while aiming, weapon switch with its D-pad and wheel tap); **Skins** (a colour for each of 18 weapons); give any weapon (including the Pimp Slap), give every weapon, refill all ammo |
+| Vehicles | Vehicle god mode, repair; **Toughness** (tank mode, bulletproof glass and tires, no explosion fling), **Handling** (extra grip, nitrous everywhere, extra top speed, bouncy cars, less stiff cars), **Look** (customize vehicle, paint, secondary colour, brake lights when stopped), **Driving camera** (free camera in cars, reset time up to never, swing-back speed, follows the nose in a slide, free drive-by camera, no swing getting in, field of view at top speed); spawn any of 79 vehicles (plus 24 blinged versions), deliver to garage, destroy |
+| World | Weather, no fog, time of day, freeze time, clear / restore streets, stores open 24/7; **People** (spawn any of 188 people, crowds, everybody dance or pose, ragdoll all, kill everyone, gangs in ordinary cars, gangs and police without guns); **Drops** (cash or weapons around you, money rain, cash drop chance); **Districts** (hand any district or the whole city to a gang, reveal the whole map) |
 | Visual | Hide HUD, map arrow shows where you face, letterbox, filters, render mode, saturation; **Camera** (field of view, camera turn speed); **Free camera** (fly it, or leave it in place and play from that shot, also in cutscenes; freeze world); **UI+** (low health and low sprint visuals, low health sound echo) |
-| Teleport | Cribs, every store, every activity, teleport to map waypoint |
+| Teleport | Cribs, **saved places** (save any spot, go back, rename, delete), every store, every activity, teleport to map waypoint |
 | Models | Play as any character model, live: switch, restore your Playa, reload your character; dialogue, animation fallback, cloth physics |
 | Customize | The game's character creator, free, as yourself: head, eyes, hair, body, skin, clothes, jewelry, tattoos, 10 saved looks and outfits, voice, facial expressions, movement styles; restore outfit, customization pose |
 | Settings | Master switch, **menu look** (plain text or itsMJQ's game look), show active tweaks, **save tweaks for next time**, forget saved tweaks; **Game & saving** (skip intro, load last save, quick save, pause cutscenes, no tutorial popups) |
@@ -79,6 +79,14 @@ SR Tweak Menu already includes them.
   [Juiced Patch](https://github.com/kobraworksmodding/Saints-Row-2-Juiced-Patch)
   by Kobraworks Modding (Soaa, Tervel, Clippy95, Scanti and contributors);
   they're written for Saints Row 1 and contain none of its code.
+- Several rows follow ideas from Saints Row (2006) mods on
+  [saintsrowmods.com](https://www.saintsrowmods.com/forum/forums/saints-row-2006.237/):
+  the weapon Color Tints, Hardcore Edition and Stilwater+ (Ricsow), the
+  Stamina Mod, Saints of Rage, Gangs drive civilian cars, More Unlockable
+  Unlock Rewards, Bouncy Cars (Ricsow), Simply Less Damping (B Dawg), Fully
+  explored map + 24/7 Stores (Ricsow), Gangs of Stilwater (Jacob_MP) and
+  Tervel's "Enable MP actions in SP" patch. None of their files are used:
+  the menu does the same live, on the game's own data.
 - **itsMJQ**: the Models and Customize tabs, movement styles, the emotes
   pages, voice lines and voices, character homies, customize vehicle, store
   and activity teleports, unlocks, render modes, the UI+ screen effects, the

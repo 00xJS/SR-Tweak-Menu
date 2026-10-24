@@ -150,7 +150,7 @@ end
 
 -- ---------------------------------------------------------------- orbit
 --
--- The fitting-room camera of the Customize and Emotes tabs, like the game's own
+-- The fitting-room camera of the Customize tab, like the game's own
 -- character creation: in front of the character you're dressing, looking at
 -- them, with them on the right of the screen so the menu on the left doesn't
 -- cover them; the right stick / mouse turns it round them and moves it from

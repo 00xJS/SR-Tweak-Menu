@@ -20,11 +20,22 @@ local F = require("features")
 -- below reads a row's start value.
 local JUICED = require("juiced")
 JUICED.setup(F)
+-- Rows after Saints Row (2006) forum mods (extras.lua) and weapon skins
+-- (skins.lua), added the same way.
+local EXTRAS = require("extras")
+EXTRAS.setup(F)
+local SKINS = require("skins")
+SKINS.setup(F)
+-- Saved places on the Teleport tab (myplaces.lua).
+local MYPLACES = require("myplaces")
+MYPLACES.setup(F)
 -- Where every row is shown: tab order, tabs and pages (layout.lua).
 require("layout").apply(F)
 JUICED.load_saved()
 JUICED.install()
 local MENU = require("menu")
+EXTRAS.install(MENU)
+MYPLACES.install(MENU)
 local WAYPOINT = require("waypoint")
 local HOMIES = require("homies")
 local FREECAM = require("freecam")
@@ -400,6 +411,9 @@ wml.hook(G.UPDATE, function(ctx)
   F.set_menu_open(MENU.is_open())
   F.update(ctx)
   JUICED.after(ctx)
+  EXTRAS.after(ctx)
+  SKINS.after(ctx)
+  MYPLACES.after()
   WAYPOINT.enabled = F.on("waypoint_auto") and not WAYPOINT.standalone
   HOMIES.limit = F.enabled and F.items.homies.v or 0
   if F.camera_turn_start and F.camera_turn_start > 0 and G.player() ~= 0 then
@@ -413,17 +427,13 @@ wml.hook(G.UPDATE, function(ctx)
     F.items.weapon_dpad.v == 2, F.items.weapon_tap.v == 2)
   -- The fitting room: the Customize tab open (a T-pose and the camera in
   -- front of you, you on the right of the screen), off as soon as it isn't.
-  -- The Emotes tab gets the same camera, without the T-pose, to watch them.
   do
     local p = G.player()
     local tab = MENU.is_open() and MENU.tab_name()
     -- (the Customize Vehicle page: the camera round your car)
     local car = tab == "Vehicles" and MENU.pages[1] and MENU.pages[1].vehicle
     if car and not G.pointer_ok(car) then car = nil end
-    -- (on Emotes, the camera round you when you came to the tab standing
-    -- still, or while an emote plays; came moving, the game's camera follows you)
-    local emotes_view = tab == "Emotes" and (not MENU.emote_free or MENU.emote_playing())
-    local viewing = p ~= 0 and (tab == "Customize" or emotes_view or car) and not FREECAM.on and G.playing(p) and read_f32(p + G.P.HEALTH) > 0
+    local viewing = p ~= 0 and (tab == "Customize" or car) and not FREECAM.on and G.playing(p) and read_f32(p + G.P.HEALTH) > 0
     -- (on a movement row in Customize: a walk-in-place preview, not the T-pose)
     local row = viewing and tab == "Customize" and MENU.current()
     local previewing = row and row.part and F.model.name == nil

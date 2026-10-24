@@ -487,34 +487,18 @@ end
 local NAV_MASK = PAD.UP | PAD.DOWN | PAD.LEFT | PAD.RIGHT | PAD.A | PAD.B | PAD.LB | PAD.RB | PAD.START | PAD.BACK
 local MENU_KEYS = { UP = true, DOWN = true, LEFT = true, RIGHT = true, ENTER = true, BACKSPACE = true }
 M.free_move = false
--- Emotes: moving when you go to the tab, you keep moving (the game's camera
--- follows you); standing still, the camera goes round you and the stick turns
--- it. Either way you're held while an emote plays.
-M.emote_free = false
-local moving, last_pos, emote_tab = 0, nil, false
-function M.emote_playing() return (F.posing or F.looping or F.repeating) ~= nil end
-local function track_moving()
-  local p = G.player()
-  if p == 0 then moving, last_pos = 0, nil return end
-  local x, _, z = G.vec(p + G.P.POS)
-  local moved = last_pos and ((x - last_pos[1]) ^ 2 + (z - last_pos[2]) ^ 2) > 0.0004
-  last_pos = { x, z }
-  moving = moved and 10 or math.max(0, moving - 1)
-end
 local function free_move_now()
   if not M.open or not block_input then return false end
   local tab = F.categories[M.tab].name
   if tab == "Customize" then return false end
   local pg = M.pages[1]
   if pg and pg.vehicle then return false end
-  if tab == "Emotes" then return M.emote_free and not M.emote_playing() end
+  -- (a page you type on, like renaming a saved place: the keys are the page's)
+  local top = M.pages[#M.pages]
+  if top and top.typing then return false end
   return true
 end
 local function update_free_move()
-  track_moving()
-  local on_emotes = M.open and F.categories[M.tab].name == "Emotes"
-  if on_emotes and not emote_tab then M.emote_free = moving > 0 end
-  emote_tab = on_emotes
   local want = free_move_now()
   if want == M.free_move then return end
   M.free_move = want

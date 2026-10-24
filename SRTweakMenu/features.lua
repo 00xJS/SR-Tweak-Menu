@@ -234,14 +234,14 @@ local function fmtx(v) return string.format("x%.1f", v) end
 
 -- Weapons, given the way the game's own weapon cheats give them (the
 -- routine the trainer uses): these are the weapons those cheats hand out.
--- Alphabetical by the name shown.
+-- Alphabetical by the name shown; the names are the game's own (US_Strings).
 local WEAPONS = {
-  { "rpg_launcher", "RPG" }, { "ak47", "AR-40 Xtnd" }, { "m16", "AR-50" }, { "spas12", "AS12 Riot" },
-  { "baseball_bat", "Baseball Bat" }, { "desert eagle", "GDHC .50" }, { "tec9", "GAL 43" }, { "grenade", "Grenades" },
+  { "rpg_launcher", "RPG" }, { "ak47", "K6 Krukov" }, { "m16", "AR-40 Xtnd" }, { "spas12", "AS12 Riot" },
+  { "baseball_bat", "Baseball Bat" }, { "desert eagle", "GDHC .50" }, { "tec9", "T3K Urban" }, { "grenade", "Grenades" },
   { "knife", "Knife" }, { "sniper_rifle", "McManus" }, { "molotov", "Molotovs" }, { "nightstick", "Nightstick" },
-  { "beretta", "NR4" }, { "pimpcane", "Pimp Cane" }, { "pipe_bomb", "Pipe Bombs" }, { "magnum", "Shepherd .44" },
-  { "mac10", "T3K Urban" }, { "tire_iron", "Tire Iron" }, { "twelve_gauge", "Tombstone" }, { "glock", "Vice 9" },
-  { "pump_action_shotgun", "12 Gauge" }, { "pimp_slap", "Pimp Slap" },
+  { "beretta", "Vice 9" }, { "pimpcane", "Pimp Cane" }, { "pipe_bomb", "Pipe Bombs" }, { "magnum", ".44 Shepherd" },
+  { "mac10", "SKR-7 Spree" }, { "tire_iron", "Crowbar" }, { "twelve_gauge", "12 Gauge" }, { "glock", "NR4" },
+  { "pump_action_shotgun", "Tombstone" }, { "pimp_slap", "Pimp Slap" },
 }
 table.sort(WEAPONS, function(a, b) return a[2]:lower() < b[2]:lower() end)
 -- Drop weapons around me: a random mix, then every weapon.
@@ -284,7 +284,7 @@ category("Player", {
       end
     end },
   { id = "saints_enemies", label = "Saints are enemies", kind = "toggle",
-    help = "The Saints treat you as a rival gang. Playing as another gang's member lets you recruit from that gang.",
+    help = "The Saints treat you as a rival gang. You side with the gang picked below, or the gang of the character you look like, and can recruit from it.",
     update = function(ctx, p) F.update_saints_enemies(ctx, p, true) end,
     off = function(ctx, p) F.update_saints_enemies(ctx, p, false) end },
   { id = "wanted_police", label = "Police notoriety", kind = "value", default = 0, min = 0, max = 5, step = 1, fmt = fmtint, live = true, oneshot = true,
@@ -640,8 +640,8 @@ category("Weapons", {
   { id = "weapon_switch", label = "Weapon switch", kind = "toggle", needs = "none", v = S("weapon_switch", false),
     help = "By Eazeepz: keys 1 to 8 pick a weapon type, the mouse wheel or D-pad left/right steps. Tap Q (B on a pad) for the next weapon; hold it for the wheel and keep moving." },
   { id = "weapon_dpad", label = "Weapon switch D-pad", kind = "choice", needs = "none",
-    options = { "Switches weapons", "Game's taunts" }, v = (tostring(S("weapon_dpad", "switch")):lower() == "taunts") and 2 or 1,
-    help = "With Weapon switch on: D-pad left/right step through your weapons, or keep the game's taunts." },
+    options = { "Switches weapons", "Left to the game" }, v = (tostring(S("weapon_dpad", "switch")):lower() == "taunts") and 2 or 1,
+    help = "With Weapon switch on: D-pad left/right step through your weapons, or are left to the game (the radio in a car, and D-pad taunts on foot)." },
   { id = "weapon_tap", label = "Weapon wheel tap", kind = "choice", needs = "none",
     options = { "Next weapon", "Wheel only" }, v = (tostring(S("weapon_tap", "next")):lower() == "wheel") and 2 or 1,
     help = "With Weapon switch on: a quick tap of the wheel button (B, or RB on layout 3) gives the next weapon, or does nothing." },
@@ -1137,12 +1137,18 @@ local PLACES = {
 F.PLACES = PLACES
 
 -- Moves the player (and their car and homies) to a spot with the game's own
--- script teleport, after telling the world to load there.
-function F.teleport_to(ctx, p, x, y, z)
+-- script teleport, after telling the world to load there. `facing` (the
+-- nine floats of a saved player's rows) turns you that way; without it you
+-- keep the way you face.
+function F.teleport_to(ctx, p, x, y, z, facing)
   F.last_teleport = { "menu teleport", F.tick }
   local pos = G.floats(ctx, { x, y + 0.5, z, 0 }, 0)
   local rows = G.floats(ctx, {}, 16)
-  for i = 0, 32, 4 do write_u32(rows + i, read_u32(p + 32 + i)) end  -- keep the facing
+  if facing then
+    for i = 1, 9 do write_f32(rows + (i - 1) * 4, facing[i]) end
+  else
+    for i = 0, 32, 4 do write_u32(rows + i, read_u32(p + 32 + i)) end  -- keep the facing
+  end
   G.call(ctx, G.STREAM_AT, { pos, 0, 0 })
   G.call(ctx, G.PLAYER_TELEPORT, { p, pos, rows })
   write_f32(p + G.P.FALL_START, x); write_f32(p + G.P.FALL_START + 4, y + 0.5); write_f32(p + G.P.FALL_START + 8, z)
@@ -4096,6 +4102,20 @@ function F.unlock_clothing(ctx, p)
   if added == 0 then return read_u32(p + G.OWNED_COUNT) >= G.OWNED_MAX and "Your wardrobe is full" or "You already own every piece" end
   return string.format("%d pieces of clothing and jewelry added to your wardrobe", added)
 end
+-- Clothes no store sells (customization_items.xtbl): multiplayer's own,
+-- and the activities' rewards (unlockables.xtbl). Unlock multiplayer /
+-- reward clothing (extras.lua) add them the same way.
+F.MP_CLOTHING = { "wool socks", "mp short chain", "mp mid-length chain", "mp long chain", "Cross pennant",
+  "cards medallion", "mp pimp hats", "zoot pants suspenders", "gamestop t-shirts" }
+F.REWARD_CLOTHING = { "zoot pants", "pimp pants", "pimp hats", "fluffy collared jackets", "racing pants", "racing jerseys",
+  "large wheel B medallion", "pimp medallion", "long chain", "long chain5", "mid-length chain5", "short chain5" }
+function F.unlock_items(ctx, p, names)
+  if p == 0 then return "Load a game first" end
+  local set, added = owned_set(p), 0
+  each_variant(ctx, names, function(item, v) if own_piece(p, item, v, set) then added = added + 1 end end)
+  if added == 0 then return read_u32(p + G.OWNED_COUNT) >= G.OWNED_MAX and "Your wardrobe is full" or "You already own every piece" end
+  return string.format("%d pieces added to your wardrobe", added)
+end
 
 local function record_of(p)
   local record = p ~= 0 and read_u32(p + G.CUSTOM) or 0
@@ -6343,11 +6363,13 @@ function F.update_saints_enemies(ctx, p, on)
     S.own_team, S.team = nil, nil
     return
   end
-  local want = nil
+  -- The gang picked in Gang you side with (extras.lua) comes first.
+  local pick = F.join_gang_team and F.join_gang_team()
+  local want = pick and team(ctx, pick) or nil
   local def = read_u32(p + G.HUMAN_DEF)
   -- Lin worked her way into the Rollerz: as her, they're your people.
   local def_name = G.pointer_ok(def) and (cstring(read_u32(def + G.D.NAME), 48) or ""):lower() or ""
-  if def_name:find("^ts_a_f_lin") then want = team(ctx, "Rollerz") end
+  if not want and def_name:find("^ts_a_f_lin") then want = team(ctx, "Rollerz") end
   if not want and G.pointer_ok(def) then
     local t = read_u32(def + G.D.TEAM)
     if t ~= playas and t ~= team(ctx, "Civilian") and t ~= team(ctx, "Police") and t ~= MASK then want = t end
