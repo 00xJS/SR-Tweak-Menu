@@ -1525,7 +1525,7 @@ do
     for _, g in ipairs(groups) do
       local rows = {}
       for _, id in ipairs(g[3]) do if by_id[id] then rows[#rows + 1] = by_id[id]; taken[id] = true end end
-      local page = { id = g[1], label = g[2], kind = "page", needs = "none", help = g[4],
+      local page = { id = g[1], label = g[2], kind = "page", needs = "none", help = g[4], page_rows = not g.open and rows or nil,
         open = g.open or function() return { title = g[2], rows = rows } end }
       F.items[g[1]] = page
       pages[#pages + 1] = page
@@ -6976,7 +6976,7 @@ do
       for k, id in ipairs(CONTROLS) do if id == x.id then rx = k end if id == y.id then ry = k end end
       return rx < ry
     end)
-    local page = { id = "settings_controls", label = "Controls", kind = "page", needs = "none",
+    local page = { id = "settings_controls", label = "Controls", kind = "page", needs = "none", page_rows = rows,
       help = "Camera turn speed, the aim button, turning while aiming and the weapon switch buttons.",
       open = function() return { title = "Controls", rows = rows } end }
     F.items.settings_controls = page
@@ -7008,7 +7008,7 @@ do
     for _, it in ipairs(weapons.items) do
       if inside[it.id] then rows[#rows + 1] = it elseif fine[it.id] then fine_rows[#fine_rows + 1] = it else keep[#keep + 1] = it end
     end
-    local page = { id = "aim_camera_page", label = "Precise Aim camera", kind = "page", needs = "none",
+    local page = { id = "aim_camera_page", label = "Precise Aim camera", kind = "page", needs = "none", page_rows = rows,
       hidden = style_is(2),
       help = "Precise Aim's camera: its style (Saints Row 1 to 2022 or yours), zoom, field of view, height and shoulder.",
       open = function() return { title = "Precise Aim camera", rows = rows } end }

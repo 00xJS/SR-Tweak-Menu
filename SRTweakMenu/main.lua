@@ -29,8 +29,12 @@ SKINS.setup(F)
 -- Saved places on the Teleport tab (myplaces.lua).
 local MYPLACES = require("myplaces")
 MYPLACES.setup(F)
+-- Show active tweaks as a page of what's changed, and the two restores (defaults.lua).
+local DEFAULTS = require("defaults")
+DEFAULTS.setup(F, JUICED.forget_saved)
 -- Where every row is shown: tab order, tabs and pages (layout.lua).
 require("layout").apply(F)
+DEFAULTS.snapshot()   -- (how the menu starts, before saved tweaks)
 JUICED.load_saved()
 JUICED.install()
 local MENU = require("menu")

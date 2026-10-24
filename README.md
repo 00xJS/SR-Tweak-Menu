@@ -46,7 +46,7 @@ menu open.
 | Teleport | Cribs, **saved places** (save any spot, go back, rename, delete), every store, every activity, teleport to map waypoint |
 | Models | Play as any character model, live: switch, restore your Playa, reload your character; dialogue, animation fallback, cloth physics |
 | Customize | The game's character creator, free, as yourself: head, eyes, hair, body, skin, clothes, jewelry, tattoos, 10 saved looks and outfits, voice, facial expressions, movement styles; restore outfit, customization pose |
-| Settings | Master switch, **menu look** (plain text or itsMJQ's game look), show active tweaks, **save tweaks for next time**, forget saved tweaks; **Game & saving** (skip intro, load last save, quick save, pause cutscenes, no tutorial popups) |
+| Settings | Master switch, **menu look** (plain text or itsMJQ's game look), show active tweaks (every changed setting, by where it is), **save tweaks for next time**, forget saved tweaks, restore menu or game defaults; **Game & saving** (skip intro, load last save, quick save, pause cutscenes, no tutorial popups) |
 
 Cheats start off; a few quality-of-life rows start on (crouch while moving, field of view x1.2, the driving camera), as `mod.ini` sets. **Settings > Save tweaks for next time** makes the menu start the way you've set it. Every menu row has a help line. See
 `SRTweakMenu/CHANGELOG.md` for what changed.

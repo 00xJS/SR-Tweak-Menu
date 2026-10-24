@@ -42,7 +42,7 @@ local TABS = {
       { "skin_k6_krukov", "skin_vice_9", "skin_nr4", "skin_ar40_xtnd", "skin_skr7_spree", "skin_44_shepherd", "skin_tombstone",
         "skin_12_gauge", "skin_as12_riot", "skin_mcmanus", "skin_rpg", "skin_platinum_rpg", "skin_nightstick", "skin_crowbar",
         "skin_knife", "skin_baseball_bat", "skin_pimp_slap", "skin_pcp", "skins_reset" }),
-    "give_weapon", "all_weapons", "ammo_all" } },
+    "give_weapon", "give_item", "give_item_count", "all_weapons", "ammo_all" } },
   { "Vehicles", {
     "veh_god", "veh_repair",
     page("vehicles_toughness", "Toughness", "Tank mode, bulletproof glass and tires, no explosion fling.",
@@ -75,7 +75,7 @@ local TABS = {
   { "Emotes", { "poses", "actions", "player_voice_lines", "scene", "stop_pose", "clear_scene", "repeat_action", "repeat_every",
     "dpad_taunts" } },
   { "Settings", {
-    "master", "status", "save_tweaks", "forget_tweaks",
+    "master", "status", "save_tweaks", "forget_tweaks", "restore_menu", "restore_game",
     page("settings_game", "Game & saving", "Skip intro, load last save, quick save, pause cutscenes and tutorial popups.",
       { "skip_intro", "load_last_save", "load_wait", "quick_save", "cutscene_pause", "no_tutorials" }) } },
 }
@@ -138,7 +138,7 @@ function L.apply(F)
               local it = take(id)
               if it then rows[#rows + 1] = it end
             end
-            local pg = { id = e.page, label = e.label, kind = "page", needs = "none", help = e.help,
+            local pg = { id = e.page, label = e.label, kind = "page", needs = "none", help = e.help, page_rows = rows,
               open = function() return { title = e.label, rows = rows } end }
             F.items[e.page] = pg
             placed[e.page] = true

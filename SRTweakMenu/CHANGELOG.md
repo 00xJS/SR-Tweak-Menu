@@ -1,5 +1,20 @@
 # SR Tweak Menu - changes
 
+## 2.6.0
+
+- Weapons > **Give item**: weed, booze, drinks and food as the stores sell
+  them (Spliff, Blunt, Pipe, Bong, 40 oz., Gin N' Juice, Cognac, Bubbly,
+  Big Swallow, Chicken Bazooms, The Twins, The Fist), with **How many**
+  (1 to 10), through the game's own inv_item_add.
+- Settings > **Show active tweaks** is now a page of every setting that isn't
+  the game's own: switches that are on, sliders off their default (field of
+  view, aim camera, skins ...) and the choices that stay set (aim style,
+  filter, weather ...), grouped by the tab and page they're on. Change any
+  of them right there, or put them all back at once.
+- Settings > **Restore menu defaults** (every row as mod.ini starts it, and
+  the saved tweaks forgotten) and **Restore game defaults** (every switch off,
+  every value the game's own). Both ask first.
+
 ## 2.5.1
 
 - The menu starts on every PC again. When the mod loader couldn't hook one

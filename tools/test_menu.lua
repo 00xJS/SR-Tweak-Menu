@@ -1344,7 +1344,7 @@ do
     for _, c in ipairs(F.categories) do if c.name == MENU.tab_name() then cat = c end end
     press("PAGEDOWN")
   end
-  F.items.status.run(make_ctx())
+  assert(#F.items.status.open().rows > 0, "the changed settings page")
   update(1)
   MENU.set_style("text"); update(1)
   assert(GAMEUI.frame == nil and MENU.style() == "text", "back to plain text")
@@ -1500,6 +1500,29 @@ do
   write_u32(FPS + 4, 0); update(1)
   assert(not F.items.first_person.v, "V switched it off: the row follows")
   write_u32(FPS, 0)
+
+  -- Give item: the picked item, as many as asked, through the game's own inv_item_add.
+  F.items.give_item.v = 2; F.items.give_item_count.v = 3
+  local gave_msg = F.activate(make_ctx(), F.items.give_item)
+  assert(scripts[#scripts]:find('inv_item_add("blunt", 3, "#PLAYER#")', 1, true) and gave_msg:find("Blunt"),
+    "give item: " .. tostring(scripts[#scripts]))
+
+  -- Show active tweaks lists every setting that isn't the game's own, by where it is; the two restores.
+  F.items.no_regen.v = true; F.items.bounce_strength.v = 40; F.items.skin_rpg.v = 3; F.items.weather.v = 4; F.items.fov.v = 1.3
+  local shown = {}
+  for _, r in ipairs(F.items.status.open().rows) do shown[r.id or r.label] = true end
+  assert(shown.no_regen and shown.bounce_strength and shown.skin_rpg and shown.weather and shown.fov,
+    "changed settings should all be listed (the field of view too)")
+  assert(shown["Player > Health & damage"] and shown["Weapons > Skins"], "grouped by tab and page")
+  assert(not shown.give_item_count and not shown.wanted_police, "pickers and live readouts aren't settings")
+  local back = F.items.restore_game.open()
+  F.activate(make_ctx(), back.rows[1]); update(2)
+  assert(not F.items.no_regen.v and F.items.bounce_strength.v == 25 and F.items.skin_rpg.v == 1 and F.items.weather.v == 1
+    and F.items.fov.v == 1.0 and not F.items.crouch_moving.v, "restore game defaults")
+  back = F.items.restore_menu.open()
+  F.activate(make_ctx(), back.rows[1]); update(2)
+  assert(math.abs(F.items.fov.v - 1.2) < 1e-6 and F.items.crouch_moving.v and F.items.car_free_cam.v, "restore menu defaults (mod.ini)")
+  local none = F.items.restore_game.open(); F.activate(make_ctx(), none.rows[1]); update(1)
 
   -- Saved places: save where you stand, rename (typing and the letter list), go there facing the saved way, delete.
   write_f32(P + 20, 120.5); write_f32(P + 24, 15.25); write_f32(P + 28, -340.75)

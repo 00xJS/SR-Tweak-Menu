@@ -449,6 +449,21 @@ local function first_person_showing()
   return (cx - px) ^ 2 + (cz - pz) ^ 2 < 0.8 * 0.8 and dy > 0.4 and dy < 2.2
 end
 
+-- ================================================================ give items
+--
+-- The weed, booze, drinks and food from the stores (drugs.xtbl) load into
+-- the same item table as the inventory items (0x823F6298 -> count at
+-- 0x830828DC), so the script function inv_item_add hands them out like the
+-- stores do. { name, the game's own name, kind }.
+local ITEMS = {
+  { "spliff", "Spliff", "weed" }, { "blunt", "Blunt", "weed" }, { "pipe", "Pipe", "weed" }, { "bong", "Bong", "weed" },
+  { "40oz", "40 oz.", "booze" }, { "gin_n_juice", "Gin N' Juice", "booze" }, { "hennessy", "Cognac", "booze" },
+  { "krystal", "Bubbly", "booze" }, { "large_softdrink", "Big Swallow", "drink" }, { "chicken_bazooms", "Chicken Bazooms", "food" },
+  { "burgera", "The Twins", "food" }, { "the_fist", "The Fist", "food" },
+}
+local ITEM_LIST = {}
+for _, it in ipairs(ITEMS) do ITEM_LIST[#ITEM_LIST + 1] = { it[1], string.format("%s (%s)", it[2], it[3]) } end
+
 -- ================================================================ rows
 local function fmtx(v) return string.format("x%.2f", v) end
 local function fmtint(v) return string.format("%d", v) end
@@ -501,6 +516,19 @@ function E.setup(features)
       v = S("spin_damping", 0.5), fmt = fmtx, oneshot = true,
       hidden = function() return not F.items.soft_spin.v end,
       help = "How much of the game's spin damping cars keep (0.5 = half)." },
+  })
+
+  F.add_rows("Weapons", "give_weapon", {
+    { id = "give_item", label = "Give item", kind = "list", items = ITEM_LIST,
+      help = "Weed, booze, drinks and food, as the stores sell them: Left / Right picks, Enter puts them in your inventory.",
+      run = function(ctx, p, _, it)
+        local item = ITEM_LIST[it.v]
+        local n = F.items.give_item_count.v
+        G.script(ctx, string.format('inv_item_add("%s", %d, "#PLAYER#")', item[1], n))
+        return string.format("Given: %d x %s", n, item[2])
+      end },
+    { id = "give_item_count", label = "How many", kind = "value", needs = "none", default = 1, min = 1, max = 10, step = 1,
+      v = 1, oneshot = true, fmt = fmtint, help = "How many of the item Give item hands you." },
   })
 
   local fp_default = math.floor(fp_fov + 0.5)
