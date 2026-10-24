@@ -589,6 +589,9 @@ end
 
 function M.build_frame(ctx)
   local fr = {}
+  -- (Settings > Menu background sets how solid the boxes are: 60% is their own look)
+  local bg = F.items.menu_background and F.items.menu_background.v or 60
+  local function box_alpha(base) return math.min(255, math.floor(base * bg / 60 + 0.5)) end
   local function quad(image, x, y, w, h, colour, extra)
     local op = { image = image, x = x, y = y, w = w, h = h, colour = colour }
     if extra then for k, v in pairs(extra) do op[k] = v end end
@@ -608,7 +611,7 @@ function M.build_frame(ctx)
   local n = #F.categories
   -- Tabs: LB, the one before, the one you're on, the one after, RB.
   local tab_h = 34 * K
-  quad("ui_menu_box_base_c", x0, y, w, tab_h, { 128, 128, 128, 200 })
+  quad("ui_menu_box_base_c", x0, y, w, tab_h, { 128, 128, 128, box_alpha(200) })
   quad("ui_menu_box_edge", x0, y + tab_h - 3 * K, w, 3 * K)
   local prev_name = F.categories[step_tab(M.tab, -1)].name:upper()
   local next_name = F.categories[step_tab(M.tab, 1)].name:upper()
@@ -636,7 +639,7 @@ function M.build_frame(ctx)
   local row_h = 28 * K
   local head_h = 46 * K
   local box_h = head_h + rows_shown * row_h + 18 * K
-  quad("ui_menu_box_base_c", x0, y, w, box_h, { 128, 128, 128, 215 })
+  quad("ui_menu_box_base_c", x0, y, w, box_h, { 128, 128, 128, box_alpha(215) })
   quad("ui_menu_box_edge", x0, y, w, 3 * K)
   quad("ui_menu_box_edge", x0, y + box_h - 3 * K, w, 3 * K, nil, { flip_v = true })
   local orn_w, orn_h = 220 * K, 41 * K
@@ -668,7 +671,7 @@ function M.build_frame(ctx)
     local value = F.value_text(it)
     if it.kind == "action" then value = it.note and it.note() or "" end
     if it.kind == "list" then
-      value = (it.ok and #it.ok == 0) and "none available" or it.items[it.v][2]
+      value = (it.ok and #it.ok == 0) and "none available" or (it.items[it.v][2] .. "  " .. F.list_position(it))
     elseif it.kind == "toggle" then
       value = it.v and "ON" or "OFF"
     elseif value:sub(1, 2) == "< " then
@@ -741,7 +744,7 @@ function M.build_frame(ctx)
   end
   local line_h = 19 * K
   local help_h = (#lines + 1) * line_h + 14 * K
-  quad("ui_menu_box_base_c", x0, y, w, help_h, { 128, 128, 128, 190 })
+  quad("ui_menu_box_base_c", x0, y, w, help_h, { 128, 128, 128, box_alpha(190) })
   local hy = y + 6 * K
   for li, l in ipairs(lines) do
     local shown = fit(ctx, "thin", help_size, l, w - 24 * K)
@@ -760,6 +763,7 @@ function M.build_frame(ctx)
   end
   if pad then
     hint("a_button", page() and "ACCEPT" or "SELECT"); hint("b_button", "BACK"); hint("control_dpad", "MOVE / CHANGE")
+    if combo_text ~= "" then hint(nil, combo_text:upper() .. " CLOSE") end
   else
     hint(nil, page() and "ENTER ACCEPT" or "ENTER SELECT"); hint(nil, "BACKSPACE BACK"); hint(nil, "ARROWS MOVE / CHANGE"); hint(nil, KEY.open .. " CLOSE")
   end
@@ -884,8 +888,7 @@ F.add_rows("Settings", "master", {
   { id = "menu_background", label = "Menu background", kind = "value", needs = "none", default = 0, min = 0, max = 100, step = 10,
     v = S("menu_background", 60),
     fmt = function(v) return v <= 0 and "Off" or string.format("%d%%", v) end,
-    hidden = function() return style_game end,
-    help = "A dark box behind the plain text menu, so it reads on any background: how solid it is (Off = no box)." },
+    help = "How solid the box behind the menu is (Off = none). Plain text: a dark box so it reads on any background. Game style: its own boxes (60% is their usual look)." },
 })
 
 function M.is_open() return M.open end

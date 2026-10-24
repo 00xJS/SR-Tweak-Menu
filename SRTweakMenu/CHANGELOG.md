@@ -1,5 +1,14 @@
 # SR Tweak Menu - changes
 
+## 2.6.2
+
+- The game style menu (itsMJQ's look) matches the plain text one: lists
+  show where you are in them ("3/12"), the controller hints include the
+  close buttons (RB + D-pad Down), and Settings > Menu background works in
+  it too, setting how solid its boxes are (60% is their usual look).
+  Every row, page and option was already the same in both; the menu test
+  now draws every page in the game style.
+
 ## 2.6.1
 
 - Settings > **Menu background**: a dark box behind the plain text menu, so

@@ -1346,6 +1346,44 @@ do
   end
   assert(#F.items.status.open().rows > 0, "the changed settings page")
   update(1)
+  -- Every page on every tab draws in the game look too (the same rows as the
+  -- plain text): lists show their position, and Menu background sets the boxes.
+  local pages_drawn = 0
+  for t, cat in ipairs(F.categories) do
+    for _, it in ipairs(cat.items) do
+      if it.kind == "page" then
+        local ok, pg = pcall(it.open, make_ctx(), P)
+        if ok and type(pg) == "table" and pg.rows then
+          MENU.tab = t
+          pg.cursor, pg.scroll = 1, 1
+          MENU.pages[#MENU.pages + 1] = pg
+          local built, fr = pcall(MENU.build_frame, make_ctx())
+          table.remove(MENU.pages)
+          assert(built and type(fr) == "table", "game look of page " .. it.label .. ": " .. tostring(fr))
+          pages_drawn = pages_drawn + 1
+        end
+      end
+    end
+  end
+  assert(pages_drawn > 20, "pages drawn in the game look: " .. pages_drawn)
+  local list_row = F.items.give_item
+  local function frame_has(fr, needle)
+    for _, op in ipairs(fr) do if op.text and op.text:find(needle, 1, true) then return true end end
+    return false
+  end
+  for t, cat in ipairs(F.categories) do
+    for i, it in ipairs(cat.items) do
+      if it == list_row then MENU.tab = t; MENU.cursor[t] = i; MENU.scroll[t] = math.max(1, i - 2) end
+    end
+  end
+  F.items.menu_background.v = 100
+  local fr100 = MENU.build_frame(make_ctx())
+  F.items.menu_background.v = 60
+  local fr60 = MENU.build_frame(make_ctx())
+  local function box_alpha(fr) for _, op in ipairs(fr) do if op.image == "ui_menu_box_base_c" then return op.colour[4] end end end
+  assert(box_alpha(fr60) == 200 and box_alpha(fr100) == 255, "menu background sets the game look's boxes")
+  assert(frame_has(fr60, "/" .. #list_row.items), "lists show their position in the game look")
+  print("game look: " .. pages_drawn .. " pages drawn")
   MENU.set_style("text"); update(1)
   assert(GAMEUI.frame == nil and MENU.style() == "text", "back to plain text")
   F.items.menu_look.v = 2; F.items.menu_look.change(make_ctx(), 0, 0, F.items.menu_look)
