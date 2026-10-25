@@ -417,6 +417,11 @@ local read_u8, read_u16, read_u32, read_f32 = wml.read_u8, wml.read_u16, wml.rea
 local write_u8, write_u16, write_u32, write_f32 = wml.write_u8, wml.write_u16, wml.write_u32, wml.write_f32
 
 function G.pointer_ok(v) return v >= 0x10000 and v < 0xC0000000 end
+-- An address the game itself handed over (an entry of its own tables, a
+-- buffer it just allocated). Those can sit in the physical-memory views at
+-- 0xC0000000 and up, where some builds put textures and GPU buffers, so
+-- only the null page and the top (0, -1) count as missing.
+function G.addr_ok(v) return v >= 0x10000 and v < 0xFFFF0000 end
 function G.vec(a) return read_f32(a), read_f32(a + 4), read_f32(a + 8) end
 
 function G.set_bits(addr, mask, on)

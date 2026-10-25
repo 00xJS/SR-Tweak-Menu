@@ -1574,6 +1574,25 @@ do
   assert(GUI.backdrop == nil, "no box with the menu closed")
   F.items.menu_background.v = 60
 
+  -- Pictures draw when the game keeps the texture and the vertex buffer high up (0xC0000000 and over, as
+  -- some builds do), and a picture that can't be drawn says why in the log, once.
+  FAKE[0x82643430] = function(ctx) ctx.regs[3] = read_cstr(ctx.regs[4]) == "test_box" and 5 or 0xFFFF end
+  FAKE[0x82641418] = function(ctx) ctx.regs[3] = 0xC0002000 end
+  write_u32(0x8370DD60, 100); write_u32(0x82FF5EC8 + 5 * 20, 2)
+  write_u32(0x82FF5EC8 + 5 * 20 + 12, 64); write_u32(0x82FF5EC8 + 5 * 20 + 16, 64)
+  write_u32(0x82FFAEC8 + 2 * 8 + 4, 3); write_u32(0x832B61CC, 10)
+  write_u32(0x832B6024, 0x50000000); write_u32(0x50000000 + 3 * 20 + 4, 0xC0001000)
+  write_u16(0xC0001000 + 4, 256); write_u16(0xC0001000 + 6, 256)
+  GUI.backdrop = { image = "test_box", x = 10, y = 20, w = 100, h = 50, colour = { 128, 128, 128, 200 } }
+  hooks[0x82200700](make_ctx())
+  assert(math.abs(read_f32(0xC0002000 + 28) - 110) < 0.01 and read_u32(0xC0002000 + 16) == 0xC8808080,
+    "a picture with its texture and vertex buffer high up draws")
+  GUI.backdrop.image = "not_a_picture"
+  local before = #logs
+  hooks[0x82200700](make_ctx()); hooks[0x82200700](make_ctx())
+  assert(#logs == before + 1 and logs[#logs]:find("not_a_picture skipped", 1, true), "a skipped picture is logged once")
+  GUI.backdrop = nil; FAKE[0x82643430] = nil; FAKE[0x82641418] = nil
+
   -- Over-the-shoulder camera: eased in to the full move along the camera's right and forward rows, no drift
   -- while the game leaves the position alone, eased back out when switched off.
   put_in_vehicle(false)

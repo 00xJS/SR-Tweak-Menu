@@ -85,7 +85,7 @@ end
 function UI.line_height(name)
   local f = font(name)
   local rec = f and read_u32(FONTS + f * 4)
-  if not rec or not G.pointer_ok(rec) then return 20 end
+  if not rec or not G.addr_ok(rec) then return 20 end
   local h = read_u16(rec + 20)
   return (h > 0 and h < 200) and h or 20
 end
@@ -117,19 +117,29 @@ local function draw_text(ctx, op, s, ox, oy)
   G.call(ctx, TEXT, { 0, 0, G.wstr(ctx, op.text), 0, f, CLIP }, { ox + op.x * s, oy + op.y * s, op.size * s })
 end
 
+-- A picture skipped is logged once per picture and reason, so a PC where
+-- the menu's pictures don't show says why.
+local skipped = {}
+local function skip(op, why, v)
+  local key = tostring(op.image) .. why
+  if skipped[key] then return end
+  skipped[key] = true
+  wml.log(string.format("menu picture %s skipped: %s (%08X)", tostring(op.image), why, (v or 0) & 0xFFFFFFFF))
+end
+
 -- A picture (or part of one) stretched over a rectangle, optionally flipped.
 local function draw_quad(ctx, op, s, ox, oy)
   local h = UI.bitmap(ctx, op.image)
-  if not h then return end
+  if not h then return skip(op, "the HUD has no picture by that name") end
   local e = BMP_INFO + h * 20
   local sheet = read_u32(e)
-  if sheet > 64 then return end
+  if sheet > 64 then return skip(op, "its sheet number is out of range", sheet) end
   local tex = read_u32(SHEETS + sheet * 8 + 4)
-  if tex >= read_u32(TEX_COUNT) then return end
+  if tex >= read_u32(TEX_COUNT) then return skip(op, "its texture number is out of range", tex) end
   local rec = read_u32(read_u32(TEX_TABLE) + tex * 20 + 4)
-  if not G.pointer_ok(rec) then return end
+  if not G.addr_ok(rec) then return skip(op, "no texture record", rec) end
   local tw, th = read_u16(rec + 4), read_u16(rec + 6)
-  if tw == 0 or th == 0 then return end
+  if tw == 0 or th == 0 then return skip(op, "the texture has no size", rec) end
   local bx, by, bw, bh = read_u32(e + 4), read_u32(e + 8), read_u32(e + 12), read_u32(e + 16)
   -- A part of the picture (op.part = { x, y, w, h } in its pixels).
   if op.part then bx, by, bw, bh = bx + op.part[1], by + op.part[2], op.part[3], op.part[4] end
@@ -147,7 +157,7 @@ local function draw_quad(ctx, op, s, ox, oy)
   G.call(ctx, SET_TEXTURE, { tex })
   G.call(ctx, PRIM_CLIP, { CLIP })
   local vb = G.call(ctx, PRIM_BEGIN, { 4, 0 })
-  if vb == 0 or not G.pointer_ok(vb) then return end
+  if not G.addr_ok(vb) then return skip(op, "no vertex buffer from the game", vb) end
   local corners = { { x0, y0, u0, v0 }, { x1, y0, u1, v0 }, { x0, y1, u0, v1 }, { x1, y1, u1, v1 } }
   for i, v in ipairs(corners) do
     local a = vb + (i - 1) * 28

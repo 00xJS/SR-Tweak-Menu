@@ -162,19 +162,19 @@ end
 local found, scans, next_scan = nil, 0, 0
 local function scan()
   local base, count = read_u32(TEX_TABLE), read_u32(TEX_COUNT)
-  if not G.pointer_ok(base) or count == 0 or count > 65535 then return nil end
+  if not G.addr_ok(base) or count == 0 or count > 65535 then return nil end
   local wanted = {}
   for _, w in ipairs(WEAPONS) do for _, t in ipairs(w[3]) do wanted[t[1]] = {} end end
   for _, other in pairs(SHARED_WITH) do wanted[other] = {} end
   local seen = {}
   for i = 0, count - 1 do
     local e = read_u32(base + i * 20 + 4)
-    if G.pointer_ok(e) and not seen[e] then
+    if G.addr_ok(e) and not seen[e] then
       local name = name_at(e + E_NAME)
       local list = wanted[name]
       if list then
         for _ = 1, 8 do   -- this entry and the copies chained to it
-          if not G.pointer_ok(e) or seen[e] or name_at(e + E_NAME) ~= name then break end
+          if not G.addr_ok(e) or seen[e] or name_at(e + E_NAME) ~= name then break end
           seen[e] = true
           list[#list + 1] = e
           e = read_u32(e + E_NEXT)
@@ -199,7 +199,7 @@ local function build()
       for _, e in ipairs(found[SHARED_WITH[t[1]] or ""] or {}) do skip[read_u32(e)] = true end
       for _, e in ipairs(found[t[1]] or {}) do
         local pixels = read_u32(e)
-        if G.pointer_ok(pixels) and not skip[pixels] and wml.read_u16(e + E_W) == t[2] and wml.read_u16(e + E_H) == t[3]
+        if G.addr_ok(pixels) and not skip[pixels] and wml.read_u16(e + E_W) == t[2] and wml.read_u16(e + E_H) == t[3]
             and wml.read_u16(e + E_FMT) == t[4] then
           local bpb = t[4] == DXT5 and 16 or 8
           local cp = by_pixels[pixels] or { pixels = pixels, blocks = t[5] // bpb, bpb = bpb, four = t[4] == DXT5, wood = w[4] }

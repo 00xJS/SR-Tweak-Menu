@@ -1,5 +1,15 @@
 # SR Tweak Menu - changes
 
+## 2.6.3
+
+- Fixed the menu's game pictures (the Menu background box, the game style
+  menu's boxes and buttons, the screen effects) not drawing on some PCs:
+  where a build keeps the game's textures or drawing buffers in high
+  memory, the menu took them for bad pointers and quietly skipped them.
+  Weapon skins had the same check and could miss textures the same way.
+- A picture the menu can't draw now says why in wml.log, once
+  ("menu picture ... skipped: ..."), so a report shows what's missing.
+
 ## 2.6.2
 
 - The game style menu (itsMJQ's look) matches the plain text one: lists
