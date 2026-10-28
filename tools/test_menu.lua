@@ -30,6 +30,8 @@ for line in io.lines(folder .. "/mod.ini") do
   local k, v = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
   if k and not line:match("^%s*;") then settings[k] = v end
 end
+-- (started with Nitrous in every vehicle on, so its hook is there to test; the row is switched off again below)
+settings.vehicle_nitrous_everywhere = "true"
 
 -- ---------------------------------------------------------------- add-ons
 -- The add-ons write files in their folder (camera.cfg, my_presets.ini), so the
@@ -463,19 +465,31 @@ do
 end
 F.items.veh_god.v = false; put_in_vehicle(false); update(1)
 
--- Nitrous toggle off: a boost on an ordinary car is cancelled; a derby car keeps it.
+-- Nitrous in every vehicle switched off after a start with it on: the game's
+-- set_nitro(vehicle, on) is refused on an ordinary car, allowed on a derby
+-- car and when turning nitrous off; on again, every car gets it.
 do
+  assert(F.nitro_patched and hooks[0x8253FE38], "nitrous hook missing")
   put_in_vehicle(true)
   local INFO = 0x56000000
   write_u32(V + 50324, INFO)
   local function name(s) for i = 1, #s do write_u8(INFO + 95 + i, s:byte(i)) end write_u8(INFO + 96 + #s, 0) end
+  local function set_nitro(on)
+    local ctx = make_ctx(); ctx.regs[3], ctx.regs[4] = V, on
+    local ran = false; ctx.call_original = function() ran = true end
+    hooks[0x8253FE38](ctx)
+    return ran
+  end
   name("car_2dr_compact01")
   F.items.nitro_all.v = false
-  write_u8(ENGINE + 380, 1); update(1)
-  assert(read_u8(ENGINE + 380) == 0, "boost should be cancelled with nitrous off")
+  assert(not set_nitro(1), "nitrous should be refused with the row off")
+  assert(set_nitro(0), "turning nitrous off always goes through")
   F.items.nitro_all.v = true
-  write_u8(ENGINE + 380, 1); update(1)
-  assert(read_u8(ENGINE + 380) == 1, "boost should stay with nitrous on")
+  assert(set_nitro(1), "nitrous should work with the row on")
+  F.items.nitro_all.v = false
+  F.nitro_cache = {}; name("sp_derbycar01")
+  assert(set_nitro(1), "a car with nitrous in the game keeps it")
+  F.nitro_cache = {}
   put_in_vehicle(false); update(1)
 end
 

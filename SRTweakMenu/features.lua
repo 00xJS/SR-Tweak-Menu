@@ -269,6 +269,12 @@ category("Player", {
     help = "Multiplies your maximum health.",
     update = function(ctx, p, v, it) F.scale_health(p, it.v) end,
     off = function(ctx, p) F.scale_health(p, 1) end },
+  { id = "items", label = "Items", kind = "page", needs = "none",
+    help = "By itsMJQ: food and drugs as the stores sell them, one at a time or all of them.",
+    open = function() return { title = "Items", rows = {
+      { label = "Give food", kind = "page", open = F.give_page("Food", F.FOOD, function(ctx, e) F.give_drug(ctx, e) end) },
+      { label = "Give drugs", kind = "page", open = F.give_page("Drugs", F.DRUGS, function(ctx, e) F.give_drug(ctx, e) end) },
+    } } end },
   { id = "heal", label = "Refill health", kind = "action", help = "",
     run = function(ctx, p) write_f32(p + G.P.HEALTH, read_u32(p + G.P.HEALTH_MAX)); return "Health refilled" end },
   { id = "kill_self", label = "Kill Yourself", kind = "action", needs = "player",
@@ -393,6 +399,7 @@ category("Player", {
       local n = HOMIES.count(p)
       if n == 0 then return "No homies are following you" end
       G.call(ctx, HOMIES.DISMISS_ALL, { p })
+      F.REACT.dismissed(F.say_reaction)
       return string.format("Dismissed %d homie%s", n, n == 1 and "" or "s")
     end },
   { id = "no_cops", label = "No cops", kind = "toggle", needs = "none", byte = { G.VAR.ALLOW_COPS, 0, 1 },
@@ -543,7 +550,7 @@ category("Customize", {
   -- As yourself: every part of your look, free, laid out like the game's
   -- creator, surgeon, salon, stores and tattoo parlour (see Your look).
   yours({ id = "style_presets", label = "Saved Presets", kind = "page", open = function(ctx, p) return F.page_presets(ctx, p, "look") end,
-    help = "Save up to 10 looks: face and body, skin, eyes, hair, facial hair and tattoos." }),
+    help = "Save up to 20 looks: face and body, skin, eyes, hair, facial hair, tattoos and voice." }),
   yours({ id = "style_head", label = "Head", kind = "page", open = function(ctx, p) return F.page_head(ctx, p) end,
     help = "" }),
   yours({ id = "style_eyes", label = "Eyes", kind = "page", open = function(ctx, p) return F.page_eyes(ctx, p) end,
@@ -554,7 +561,11 @@ category("Customize", {
     help = "" }),
   yours({ id = "style_skin", label = "Skin", kind = "page", open = function(ctx, p) return F.page_skin(ctx, p) end,
     help = "" }),
-  yours({ id = "style_clothes", label = "Clothes", kind = "page", open = function(ctx, p) return F.page_store(ctx, p, "Clothes", CLOTHES) end,
+  yours({ id = "style_clothes", label = "Clothes", kind = "page", open = function(ctx, p)
+      local pg = F.page_store(ctx, p, "Clothes", CLOTHES)
+      pg.prompts = { { pad = "X", key = "R", label = "Randomize", run = function(c, pp) return F.randomize_clothes(c, pp) end } }
+      return pg
+    end,
     help = "" }),
   yours({ id = "style_jewelry", label = "Jewelry", kind = "page", open = function(ctx, p) return F.page_store(ctx, p, "Jewelry", JEWELRY) end,
     help = "" }),
@@ -611,8 +622,92 @@ category("Emotes", {
 
 })
 
+
+-- ================================================================ Items
+--
+-- Food and drugs from the game's own drugs.xtbl: inv_item_add finds a drug
+-- by name (0x823F6920) and adds `count` of it to the drug inventory.
+-- { name, label }.
+F.FOOD = { { "chicken_bazooms", "Chicken Bazooms" }, { "the_fist", "The Fist" }, { "burgera", "The Twins" },
+  { "large_softdrink", "Big Swallow" } }
+F.DRUGS = { { "spliff", "Spliff" }, { "blunt", "Blunt" }, { "pipe", "Pipe" }, { "bong", "Bong" },
+  { "40oz", "40 oz." }, { "gin_n_juice", "Gin N' Juice" }, { "hennessy", "Cognac" }, { "krystal", "Bubbly" } }
+
+-- A page of give rows: each entry on its own, then Give All.
+function F.give_page(title, list, give)
+  return function()
+    local rows = {}
+    for _, e in ipairs(list) do
+      rows[#rows + 1] = { label = e[2], kind = "action", run = function(ctx, p) give(ctx, e); return "Given: " .. e[2] end }
+    end
+    rows[#rows + 1] = { label = "Give all", kind = "action", run = function(ctx, p)
+      for _, e in ipairs(list) do give(ctx, e) end
+      return "Given: all " .. title:lower()
+    end }
+    return { title = title, rows = rows }
+  end
+end
+function F.give_drug(ctx, e)
+  enqueue(string.format('inv_item_add("%s", 1, "#PLAYER#")', e[1]))
+end
+
+-- The weapons in your inventory (the wheel), by the game's item names:
+-- inventory items are a ring at player+INVENTORY, the record at item+8
+-- starts with the name.
+function F.wheel_weapons(p)
+  local known, out = {}, {}
+  for _, w in ipairs(WEAPONS) do known[w[1]] = w[2] end
+  local head = read_u32(p + G.P.INVENTORY)
+  if not G.pointer_ok(head) then return out end
+  local item = head
+  for _ = 1, 64 do
+    local info = read_u32(item + 8)
+    local namep = G.pointer_ok(info) and read_u32(info) or 0
+    if G.pointer_ok(namep) then
+      local chars = {}
+      for i = 0, 31 do
+        local c = read_u8(namep + i)
+        if c < 32 or c > 126 then break end
+        chars[#chars + 1] = string.char(c)
+      end
+      local name = table.concat(chars):lower()
+      if known[name] then out[#out + 1] = { name, known[name] } end
+    end
+    item = read_u32(item)
+    if item == head or not G.pointer_ok(item) then break end
+  end
+  return out
+end
+function F.remove_weapon_page(ctx, p)
+  local rows = {}
+  for _, w in ipairs(p and p ~= 0 and F.wheel_weapons(p) or {}) do
+    rows[#rows + 1] = { label = w[2], kind = "action", run = function(c)
+      enqueue(string.format('inv_item_remove("%s", 1, "#PLAYER#")', w[1]))
+      return "Removed: " .. w[2]
+    end }
+  end
+  if #rows == 0 then rows[1] = { label = "No weapons", kind = "action", run = function() return "No weapons to remove" end } end
+  return { title = "Remove weapon", rows = rows }
+end
+
+-- Switches for itsMJQ's character additions, off until switched on. They
+-- live in Settings like Restore outfit; layout.lua puts them in Customize.
+F.add_rows("Settings", nil, {
+  { id = "face_react", label = "Reactive expressions", kind = "toggle", needs = "none", v = S("face_reactions", false),
+    help = "By itsMJQ: a pained face when you're hurt, a scared one on fire, a sneer when you shoot, and more, as in Saints Row 2.",
+    off = function() if F.FACE then F.FACE.reset() end end },
+  { id = "voice_reactions", label = "Voice reactions", kind = "toggle", needs = "none", v = S("voice_reactions", false),
+    help = "By itsMJQ: your character speaks up when first hit, crashing, hijacking, arrested, picking up cash, standing around and more. How often follows Character dialogue." },
+  { id = "talking_mouth", label = "Mouth moves when you talk", kind = "toggle", needs = "none", v = S("talking_mouth", false),
+    help = "By itsMJQ: your mouth (and beard) moves while your character says a line outside cutscenes, like Saints Row 2." },
+  { id = "breast_physics", label = "Breast physics", kind = "toggle", needs = "none", v = S("breast_physics", false),
+    help = "By itsMJQ: with Body type at least a quarter female, the chest and the tops over it bounce with running, jumping and stopping. Only your character." },
+})
+
 -- ================================================================ Weapons
 category("Weapons", {
+  { id = "mp_pimp_slap", label = "Multiplayer Pimp Slap", kind = "toggle", needs = "none", v = S("mp_pimp_slap", false),
+    help = "By itsMJQ: the Pimp Slap hits as hard as in multiplayer, so RT knocks people flying; LT is a basic punch. Off: the game's own slap." },
   { id = "infinite_ammo", label = "Infinite ammo", kind = "toggle", needs = "none", byte = { G.VAR.UNLIMITED_AMMO, 1, 0 },
     help = "Reserve ammo never runs out." },
   { id = "no_reload", label = "No reload", kind = "toggle",
@@ -665,6 +760,12 @@ category("Weapons", {
   { id = "punch_blast", label = "Punch blast", kind = "choice", needs = "none",
     options = { "Small", "Grenade", "Rocket", "Huge" }, v = 2, hidden = function() return not F.items.explosive_punch.v end,
     help = "How big the explosive punch blast is." },
+  { id = "give_weapons", label = "Give weapons", kind = "page", needs = "none",
+    help = "By itsMJQ: a page of every weapon, each on its own row, then Give all.",
+    open = F.give_page("Weapons", WEAPONS, function(ctx, w) F_WEAPON_QUEUE[#F_WEAPON_QUEUE + 1] = w[1] end) },
+  { id = "remove_weapon", label = "Remove weapon", kind = "page",
+    help = "By itsMJQ: the weapons you carry; pick one to take it away.",
+    open = function(ctx, p) return F.remove_weapon_page(ctx, p) end },
   { id = "give_weapon", label = "Give weapon", kind = "list", items = WEAPONS,
     help = "Adds the selected weapon with 500 rounds.",
     run = function(ctx, p, _, it)
@@ -887,9 +988,12 @@ category("Vehicles", {
     update = function(ctx, p, v) if p ~= 0 then F.car_grip(v) end end,
     off = function() F.car_grip(nil) end },
   { id = "nitro_all", label = "Nitrous in every vehicle", kind = "toggle", needs = "none", v = S("vehicle_nitrous_everywhere", false),
-    help = "Every vehicle gets nitrous (Shift).",
-    update = function() end,
-    off = function() end },
+    saved_now = true,
+    help = "Every vehicle gets nitrous (Shift). Switching it on works from the next start; off stops it at once.",
+    change = function(ctx, p, v, it)
+      if F.save_now then F.save_now(it) end
+      if it.v and not F.nitro_patched then return "Nitrous in every vehicle: from the next start" end
+    end },
   { id = "max_speed", label = "Extra top speed (mph)", kind = "value", needs = "vehicle", default = 0, min = 0, max = 300, step = 10, fmt = fmtint,
     help = "Raises your vehicle's top speed limit.",
     update = function(ctx, p, v, it)
@@ -956,10 +1060,14 @@ category("Vehicles", {
 category("World", {
   { id = "weather", label = "Weather", kind = "choice", needs = "none", options = WEATHER, help = "Default lets the weather change on its own.",
     change = function(ctx, p, _, it) G.script(ctx, string.format("set_weather(%d, true)", it.v - 2)) end },
-  { id = "hour", label = "Time of day", kind = "value", needs = "none", default = 12, min = 0, max = 23, step = 1, fmt = fmtint, live = true, oneshot = true,
+  { id = "hour", label = "Time of day", kind = "value", needs = "none", default = 12, min = 0, max = 23, step = 1, wrap = true, fmt = fmtint, live = true, oneshot = true,
     help = "",
     read = function() return read_u8(G.VAR.CLOCK_HOUR) end,
     change = function(ctx, p, _, it) G.script(ctx, string.format("set_time_of_day(%d, 0)", it.v)) end },
+  { id = "sky_type", label = "Sky", kind = "choice", needs = "none", options = F.SKY_NAMES,
+    help = "The sky and lighting of one part of the day, whatever the time. Default follows the clock.",
+    change = function(ctx, p, v, it) return F.set_sky(it.v) end,
+    off = function() F.set_sky(1) end },
   { id = "freeze_clock", label = "Freeze time", kind = "toggle", needs = "none", help = "",
     update = function(ctx, p, v, it)
       local rate = read_f32(G.VAR.CLOCK_RATE)
@@ -967,18 +1075,18 @@ category("World", {
     end,
     off = function(ctx, p, v, it) write_f32(G.VAR.CLOCK_RATE, it.saved or 40) end },
   { id = "clear", label = "Clear streets", kind = "action", needs = "none",
-    help = "Removes all traffic and pedestrians. They return over time.",
+    help = "Removes all traffic and pedestrians until Restore Streets.",
     run = function(ctx)
+      -- spawning_remove_all also leaves spawning off: the streets stay empty until Restore Streets
       G.script(ctx, "spawning_remove_all()")
-      enqueue("spawning_on()")   -- spawning_remove_all leaves spawning off
-      return "Cleared"
+      return "Streets cleared"
     end },
   { id = "restore_traffic", label = "Restore streets", kind = "action", needs = "none",
     help = "Resumes traffic and pedestrians.",
     run = function(ctx) G.script(ctx, "spawning_on()"); return "Traffic and peds back on" end },
   { id = "drop", label = "Ragdoll all NPCs", kind = "action", needs = "player", help = "",
     run = function(ctx) G.console(ctx, "super_ragdoll"); return "Everybody drop!" end },
-  { id = "kill_all", label = "Kill Everyone", kind = "action", needs = "player", help = "Kills every NPC nearby. Your homies are spared.",
+  { id = "kill_all", label = "Kill Everyone", kind = "action", needs = "player", help = "Kills NPCs nearby. Homies and story characters are spared; no notoriety.",
     run = function(ctx, p) return F.kill_everyone(ctx, p) end },
   { id = "everybody", label = "Everybody...", kind = "list", needs = "player", items = {
       { { "dance a", "dance b", "dance c", "dance d" }, "Dance" },
@@ -1031,6 +1139,53 @@ category("World", {
     off = function() F.set_drop_chance(nil) end },
 })
 
+-- ================================================================ Sky Type
+-- time_of_day.xtbl's segments live at 0x837B4030 (524 bytes each, count at
+-- 0x8370D1B0; +0 name, +4 time, the sky and light settings after). A sky
+-- type copies one segment's settings over every other, keeping the times,
+-- so whatever the clock says the day looks like that part of it; Default
+-- puts every segment back.
+F.TOD = { BASE = 0x837B4030, COUNT = 0x8370D1B0, SIZE = 524 }
+F.SKY_NAMES = { "Default", "Dawn2", "Dawn3", "Midday1", "Midday2", "Midday3", "Sunset", "Dusk1", "Dusk2", "Dusk3", "Dusk4",
+  "Dusk5", "Moon Rise1", "Moon Rise2", "Midnight", "Moon Set1", "Moon Set2", "Moon Set3", "Moon Set4", "Moon Set5" }
+F.sky_saved = nil
+function F.set_sky(v)
+  local T = F.TOD
+  local n = read_u32(T.COUNT)
+  if n < 1 or n > 32 then return "The sky isn't loaded yet" end
+  if F.sky_saved then
+    for i, words in pairs(F.sky_saved) do
+      local rec = T.BASE + i * T.SIZE
+      for k, w in ipairs(words) do write_u32(rec + 4 + k * 4, w) end
+    end
+    F.sky_saved = nil
+  end
+  if v == 1 then return "Sky: Default" end
+  local want, src = F.SKY_NAMES[v], nil
+  for i = 0, n - 1 do
+    local np = read_u32(T.BASE + i * T.SIZE)
+    if G.pointer_ok(np) then
+      local chars = {}
+      for k = 0, 31 do local c = read_u8(np + k); if c == 0 then break end chars[#chars + 1] = string.char(c) end
+      if table.concat(chars) == want then src = T.BASE + i * T.SIZE end
+    end
+  end
+  if not src then return "No " .. want .. " sky in this game" end
+  local words = {}
+  for k = 1, (T.SIZE - 8) // 4 do words[k] = read_u32(src + 4 + k * 4) end
+  F.sky_saved = {}
+  for i = 0, n - 1 do
+    local rec = T.BASE + i * T.SIZE
+    if rec ~= src then
+      local keep = {}
+      for k = 1, #words do keep[k] = read_u32(rec + 4 + k * 4); write_u32(rec + 4 + k * 4, words[k]) end
+      F.sky_saved[i] = keep
+    end
+  end
+  return "Sky: " .. want
+end
+F.items.sky_type.options = F.SKY_NAMES   -- (the World row is made above)
+
 -- ================================================================ Visual
 -- Render modes: the renderer's own switches. The console commands for most
 -- of them do nothing in the retail game (their handlers only run when a
@@ -1064,25 +1219,74 @@ F.RENDER_MODES = {
   { "No Textures", { no_textures } },
   { "No People", { flag(RENDER.CHARS, 0) } },
   { "People Only", { flag(RENDER.LEVEL, 0), flag(RENDER.STATIC, 0) } },
+  { "Pitch Black", { flag(RENDER.SKY, 0), flag(RENDER.LEVEL, 0), flag(RENDER.STATIC, 0) }, people = true },
 }
+-- Pitch Black: only you. Other people are hidden the way the game's
+-- character_hide does it (0x824468F0): object +120 bit 0x08000000 set, and
+-- while it's drawn (bit 0x04000000) its vtable +28 called with (0, 1);
+-- shown again with the bit cleared and (1, 1), as character_show does.
+F.pitch_hidden = {}
+local HIDE, DRAWN = 0x08000000, 0x04000000
+local function set_shown(ctx, h, show)
+  local flags = read_u32(h + 120)
+  if show then flags = flags & ~HIDE else flags = flags | HIDE end
+  write_u32(h + 120, flags)
+  local vt = read_u32(h)
+  if (flags & DRAWN) ~= 0 and G.pointer_ok(vt) and G.pointer_ok(read_u32(vt + 28)) then
+    G.call(ctx, read_u32(vt + 28), { h, show and 1 or 0, 1 })
+  end
+end
+function F.pitch_update(ctx, p)
+  if not F.RENDER_MODES[F.render_mode].people then return end
+  local h = read_u32(G.HUMAN_LIST)
+  for _ = 1, 300 do
+    if not G.pointer_ok(h) then break end
+    if h ~= p and not F.pitch_hidden[h] and (read_u32(h + 120) & HIDE) == 0 then
+      F.pitch_hidden[h] = true
+      set_shown(ctx, h, false)
+    end
+    h = read_u32(h + G.HUMAN_NEXT)
+    if h == read_u32(G.HUMAN_LIST) then break end
+  end
+end
+function F.pitch_restore(ctx)
+  local alive = {}
+  local h = read_u32(G.HUMAN_LIST)
+  for _ = 1, 300 do
+    if not G.pointer_ok(h) then break end
+    alive[h] = true
+    h = read_u32(h + G.HUMAN_NEXT)
+    if h == read_u32(G.HUMAN_LIST) then break end
+  end
+  for o in pairs(F.pitch_hidden) do if alive[o] then set_shown(ctx, o, true) end end
+  F.pitch_hidden = {}
+end
 F.RENDER_MODE_NAMES = {}
 for i, m in ipairs(F.RENDER_MODES) do F.RENDER_MODE_NAMES[i] = m[1] end
 F.render_mode = 1
 function F.set_render_mode(ctx, n)
   for _, s in ipairs(F.RENDER_MODES[F.render_mode][2]) do s.off() end
+  if F.RENDER_MODES[F.render_mode].people and ctx then F.pitch_restore(ctx) end
   F.render_mode = n
   for _, s in ipairs(F.RENDER_MODES[n][2]) do s.on() end
-  return "Render mode: " .. F.RENDER_MODES[n][1]
+  return "Rendering: " .. F.RENDER_MODES[n][1]
 end
 end
+F.DRAW_DISTANCES = { { "Default" }, { "Far", 400 }, { "Very Far", 800 }, { "Max", 1600 } }
 category("Visual", {
   { id = "hide_hud", label = "Hide HUD", kind = "toggle", needs = "player", help = "",
     change = function(ctx, p, v, it) G.script(ctx, it.v and "hud_hide()" or "hud_show()") end,
     off = function(ctx) G.script(ctx, "hud_show()") end },
   { id = "saturation", label = "Saturation", kind = "value", needs = "none", default = 1.0, min = 0, max = 2, step = 0.1, fmt = fmt1, float = G.VAR.SATURATION,
     help = "0 = black and white." },
-  { id = "letterbox", label = "Letterbox", kind = "toggle", needs = "player", help = "",
-    change = function(ctx, p, v, it) G.call(ctx, G.LETTERBOX, { it.v and 1 or 0 }) end,
+  { id = "letterbox", label = "Letterbox", kind = "toggle", needs = "none", help = "Black bars, in play and in cutscenes.",
+    -- (a cutscene starting or ending resets the bars: put back each time)
+    update = function(ctx, p, v, it)
+      local cs = G.in_cutscene() and true or false
+      if it.cs ~= cs then it.cs, it.again = cs, F.tick + 30; G.call(ctx, G.LETTERBOX, { 1 }) end
+      if it.again and F.tick >= it.again then it.again = nil; G.call(ctx, G.LETTERBOX, { 1 }) end
+    end,
+    change = function(ctx, p, v, it) it.cs = nil; G.call(ctx, G.LETTERBOX, { it.v and 1 or 0 }) end,
     off = function(ctx) G.call(ctx, G.LETTERBOX, { 0 }) end },
   { id = "filter", label = "Filter", kind = "list", needs = "none", items = FILTERS,
     help = "",
@@ -1115,9 +1319,23 @@ category("Visual", {
     end,
     off = function() wml.write_f32(G.TIME_DIV, 1.0) end },
   { id = "render_mode", label = "Render mode", kind = "choice", needs = "player", options = F.RENDER_MODE_NAMES,
-    help = "The renderer's own views: no sky, no textures, no people, or people only.",
+    help = "The renderer's own views: no sky, no textures, no people, people only, or Pitch Black (only you).",
+    update = function(ctx, p) F.pitch_update(ctx, p) end,
     change = function(ctx, p, v, it) return F.set_render_mode(ctx, it.v) end,
     off = function(ctx) F.set_render_mode(ctx, 1) end },
+  -- Draw distance: the renderer's forced fade distance (console r_force_fade_dist),
+  -- sent again now and then (a load puts the game's own back).
+  { id = "draw_distance", label = "Draw distance", kind = "value", needs = "none", default = 1, min = 1, max = #F.DRAW_DISTANCES, step = 1,
+    fmt = function(n) return F.DRAW_DISTANCES[n][1] end,
+    help = "How far away buildings, props and scenery still show before they fade out. Default is the game's own.",
+    change = function(ctx, p, v, it) return F.set_draw_distance(ctx, it.v) end,
+    update = function(ctx) if F.tick % 500 == 0 then F.set_draw_distance(ctx, F.items.draw_distance.v, true) end end,
+    off = function(ctx) F.set_draw_distance(ctx, 1) end },
+  { id = "bloom", label = "Bloom", kind = "value", needs = "none", default = 0, min = 0, max = 2, step = 0.1,
+    fmt = function(v) return v <= 0 and "Off" or string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+    help = "A glow around bright lights, the sky and shiny surfaces. Works with the filters.",
+    change = function() F.push_look() end, off = function() F.push_look() end,
+    update = function() if F.tick % 250 == 0 then F.push_look() end end },
 })
 
 -- ================================================================ Teleport
@@ -1194,6 +1412,18 @@ do
   end
 end
 
+-- Strongholds, by their start navpoints from the district files (*.cts
+-- "$Start navpoint"). { name, navpoint }.
+F.STRONGHOLDS = {
+  { "Abandoned Police Station", "projects_police_primary" }, { "Abandoned Storefront", "saintsrow_strong_start" },
+  { "Black Bottom Refinery", "factory_$stronghold000" }, { "Cecil Park Drug Lab", "barrio_$t_sh_start" },
+  { "Charlestown Warehouse", "docks_$t_stronghold-ware_start1" }, { "Copperton Receiving Station", "truckyard_strong_prim" },
+  { "Filmore Parking Garage", "downtown_$t-parking-start" }, { "Fox Drive Weapons Plant", "factory_$t-steel-use" },
+  { "King's Grocery", "vksuburb_$t-grocery-use" }, { "Pleasant View Storage", "racetrack_$t_sh_store_start" },
+  { "Price's Mansion", "wrsuburb_$t_sh_price_start" }, { "Stoughton Shipyard", "docks_$n-pen-start" },
+  { "Sunnyvale Loft", "projects_$t-loft-use" }, { "Tidal Spring Apartments", "wrsuburb_$t_sh_apart_init" },
+  { "Waterfront Rooftop", "redlight_$n-rooftop-start" },
+}
 category("Teleport", {
   { id = "places", label = "Cribs", kind = "list", items = PLACES,
     help = "",
@@ -1204,6 +1434,14 @@ category("Teleport", {
     end },
   { id = "tp_stores", label = "Stores", kind = "page", open = nav_groups("Stores", STORE_GROUPS) },
   { id = "tp_activities", label = "Activities", kind = "page", open = nav_groups("Activities", ACTIVITY_GROUPS) },
+  { id = "tp_strongholds", label = "Strongholds", kind = "page",
+    help = "By itsMJQ: the start of every stronghold.", open = function()
+      local r = {}
+      for _, sh in ipairs(F.STRONGHOLDS) do
+        r[#r + 1] = { label = sh[1], kind = "action", run = function(ctx, p) return F.teleport_nav(ctx, p, sh[2], sh[1]) end }
+      end
+      return { title = "Strongholds", rows = r }
+    end },
   { id = "waypoint_auto", label = "Auto-teleport to waypoint", kind = "toggle", needs = "none", v = S("waypoint_teleport", false),
     help = "Setting a waypoint on the map takes you there.",
     change = function(ctx, p, v, it)
@@ -1288,9 +1526,9 @@ do
   end
   local face = {}
   for _, id in ipairs({ "style_presets", "style_head", "style_eyes", "style_hair", "style_body", "style_skin" }) do face[#face + 1] = take(id) end
-  local style = { { label = "Saved Outfits", kind = "page", help = "Save up to 10 outfits and switch between them.",
+  local style = { { label = "Saved Outfits", kind = "page", help = "Save up to 20 outfits and switch between them.",
     open = function(c, pp) return F.page_presets(c, pp, "outfit") end },
-    { id = "style_remove_clothing", label = "Remove Clothing", kind = "page", help = "Takes off every piece of clothing for a clean slate.",
+    { id = "style_remove_clothing", label = "Remove Clothing", kind = "page", help = "Takes off every piece of clothing and jewelry for a clean slate.",
       open = function()
         local pg
         pg = { title = "Remove all clothing?", rows = {
@@ -1301,14 +1539,46 @@ do
   for _, id in ipairs({ "style_clothes", "style_jewelry", "style_tattoos" }) do style[#style + 1] = take(id) end
   local voice, movement = take("style_voice"), take("style_movement")
   local mine = function() return F.model.name ~= nil end
-  local function section(id, label, rows, help)
+  local function section(id, label, rows, help, undress)
     local row = { id = id, label = label, kind = "page", needs = "player", hidden = mine, help = help,
-      open = function() return { title = label, rows = rows } end }
+      open = function(c, pp)
+        if not undress or not c or not pp then return { title = label, rows = rows } end
+        -- Face & Body: clothes off while you work on the body underneath.
+        local U = F.undress(c, pp, F.STRIP_FOR_FACE, { socks = true, tank = true, decent = true })
+        local random = { pad = "X", key = "R", label = "Randomize", run = function(cc, ppp) return F.randomize_look(cc, ppp) end }
+        -- (U.prompt is nil when nothing needs taking off; a nil first entry hid Randomize)
+        local prompts = {}
+        if U.prompt then prompts[#prompts + 1] = U.prompt end
+        prompts[#prompts + 1] = random
+        return { title = label, rows = rows, back = U.back, prompts = prompts }
+      end }
     F.items[id] = row
     return row
   end
+  -- Randomize inside each part of Face & Body (Head, Eyes, Hair, Body, Skin): only that page's rows -
+  -- sliders get a new value, lists a random entry, and a page of choices runs one of them.
+  -- Every page under them gets its own (Head > Nose randomizes only the nose).
+  local function with_random(r)
+    if r.kind ~= "page" or not r.open or r.label == "Saved Presets" or r.random_wrapped then return end
+    r.random_wrapped = true
+    local open = r.open
+    r.open = function(c, pp)
+      local pg = open(c, pp)
+      if type(pg) == "table" and pg.rows then
+        pg.prompts = pg.prompts or {}
+        local has = false
+        for _, pr in ipairs(pg.prompts) do if pr.label == "Randomize" then has = true end end
+        if not has then
+          pg.prompts[#pg.prompts + 1] = { pad = "X", key = "R", label = "Randomize", run = function(cc, ppp) return F.randomize_page(cc, ppp, pg.rows) end }
+        end
+        for _, sub in ipairs(pg.rows) do with_random(sub) end
+      end
+      return pg
+    end
+  end
+  for _, r in ipairs(face) do with_random(r) end
   local tail = {
-    section("style_face_body", "Face & Body", face, "Saved presets, head, eyes, hair, body and skin."),
+    section("style_face_body", "Face & Body", face, "Saved presets, head, eyes, hair, body and skin.", true),
     section("style_style", "Style", style, "Saved outfits, clothes, jewelry and tattoos."),
     { id = "style_personal", label = "Personalization", kind = "header", hidden = mine },
     voice, movement,
@@ -1335,6 +1605,8 @@ category("Settings", {
   { id = "unlock_clothing", label = "Unlock all clothing", kind = "action",
     help = "Adds every clothing and jewelry item to your wardrobe.",
     run = function(ctx, p) return F.unlock_clothing(ctx, p) end },
+  { id = "tribal_hud", label = "HUD styles", kind = "toggle", needs = "none",
+    help = "A HUD that moves with the camera and reacts to hits, in the Default+ or SR '22 design. The reactive weapon wheel stays as it is." },
   { id = "low_health_fx", label = "Low health visuals", kind = "toggle", needs = "none",
     help = "A pulsing dark red edge to the screen when your health is low." },
   { id = "low_sprint_fx", label = "Low sprint visuals", kind = "toggle", needs = "none",
@@ -1425,42 +1697,147 @@ function F.page_voice_lines(ctx, p)
 end
 
 local EMOTIONS = { "None", "Angry", "Disgust", "Fear", "Joy", "Sad", "Surprise" }
+local EXPRESSION_LABELS={}
+do
+  local order,counts,seen={},{},{}
+  for _,name in ipairs(EMOTIONS) do order[#order+1]={id=name,label=name} end
+  for _,clip in ipairs(require('juiced_faces').clips) do order[#order+1]=clip end
+  for _,entry in ipairs(order) do
+    local key=entry.label:lower();counts[key]=(counts[key] or 0)+1
+  end
+  for _,entry in ipairs(order) do
+    local key=entry.label:lower();seen[key]=(seen[key] or 0)+1
+    EXPRESSION_LABELS[entry.id]=entry.label..(counts[key]>1 and ' '..seen[key] or '')
+  end
+end
+local FACIAL=require('facial_expressions')
+FACIAL.enabled=function() return F.enabled and not F.model.name end
+F.body_gender=require('body_gender')
+F.body_gender.enabled=function() return F.enabled and not F.model.name end
 local EXPRESSION_FILE = wml.mod_folder .. "/expression.txt"
 F.expression = nil
 do
   local file = io.open(EXPRESSION_FILE, "rb")
   if file then
-    local e = (file:read("*a") or ""):match("^%s*(%a+)")
+    local e = (file:read("*a") or ""):match("^%s*([%w_]+)")
     file:close()
-    if e and e ~= "None" then F.expression = e end
+    if e and FACIAL.names[e] and e ~= "None" then F.expression = e end
   end
 end
-local function show(ctx, e)
-  if e and e ~= "None" then G.script(ctx, string.format('human_set_override_emotion("#PLAYER#", "%s")', e))
-  else G.script(ctx, 'human_clear_override_emotion("#PLAYER#")') end
+local function show(ctx,e,preview)
+  return FACIAL.request(ctx,e or 'None',preview)
 end
 function F.page_expressions(ctx, p)
-  local rows, cursor = {}, 1
+  local rows, cursor = { F.face_react_row() }, 2
   for i, e in ipairs(EMOTIONS) do
-    rows[#rows + 1] = { label = e, kind = "action",
+    rows[#rows + 1] = { id="facial_"..e,face_expression=e,label = EXPRESSION_LABELS[e], kind = "action",
       note = function() return (F.expression or "None") == e and "CURRENT" or "" end,
-      hover = function() F.wear_pending = { at = F.tick + 6, fn = function(c) show(c, e) end } end,
+      hover = function() F.wear_pending = { at = F.tick + 6, fn = function(c) show(c, e, true) end } end,
       run = function(c)
         F.wear_pending = nil
+        local ok,why=show(c,e)
+        if not ok then return why end
         F.expression = e ~= "None" and e or nil
-        show(c, e)
         local file = io.open(EXPRESSION_FILE, "wb")
         if file then file:write(e, "\n"); file:close() end
-        return "Expression: " .. e
+        return "Expression: " .. EXPRESSION_LABELS[e]
       end }
-    if (F.expression or "None") == e then cursor = i end
+    if (F.expression or "None") == e then cursor = #rows end
+  end
+  rows[#rows+1]={id='face_native_header',label='Imported Emotions',kind='header'}
+  local groups={ {},{},{} }
+  for _,row in ipairs(F.page_juiced_expressions(ctx,p).rows) do
+    local e=row.face_expression
+    local group=(e:find('pain') or e:find('death')) and 2 or ((e=='Juiced_inebriated' or e=='Juiced_mellow' or e=='Juiced_sleepy') and 3 or 1)
+    groups[group][#groups[group]+1]=row
+  end
+  for group,list in ipairs(groups) do
+    if group>1 then rows[#rows+1]={id='face_group_'..group,label=group==2 and 'Damage & Death' or 'Drink, Smoke & Rest',kind='header'} end
+    table.sort(list,function(a,b) return a.label<b.label end)
+    for _,row in ipairs(list) do rows[#rows+1]=row;if F.expression==row.face_expression then cursor=#rows end end
   end
   return { title = "Facial Expressions", rows = rows, cursor = cursor,
     back = function(c) F.wear_pending = nil; show(c, F.expression) end }
 end
+function F.page_juiced_expressions(ctx,p)
+  local rows,cursor={},1
+  for i,clip in ipairs(require('juiced_faces').clips) do
+   if clip.id~='Juiced_blank' then   -- (Blank is the same as None; its key stays in the banks)
+    local e,label=clip.id,EXPRESSION_LABELS[clip.id]
+    rows[#rows+1]={id='facial_'..e,face_expression=e,label=label,kind='action',
+      help='Preview this face. Accept keeps it; None clears the expression.',
+      note=function()
+        if F.expression~=e then return '' end
+        return require('juiced_player').ready(nil,G.player(),e) and 'CURRENT' or 'SAVED'
+      end,
+      hover=function() F.wear_pending={at=F.tick+6,fn=function(c) show(c,e,true) end} end,
+      run=function(c)
+        F.wear_pending=nil
+        local ok,why=show(c,e);if not ok then return why end
+        F.expression=e
+        local file=io.open(EXPRESSION_FILE,'wb')
+        if file then file:write(e,'\n');file:close() end
+        return 'Expression: '..label
+      end}
+    if F.expression==e then cursor=#rows end
+   end
+  end
+  return {title='Facial Expressions',rows=rows,cursor=cursor,
+    back=function(c) F.wear_pending=nil;show(c,F.expression) end}
+end
+-- Reactive Expressions (face_react.lua): a moment's face for what happens to
+-- you, over the one you chose. Off unless switched on (face_reactions in
+-- mod.ini; Save tweaks keeps it). The row is also on Facial Expressions.
+F.FACE = require('face_react')
+F.FACE.enabled = function() return FACIAL.enabled() and F.on("face_react") end
+function F.face_react_row() return F.items.face_react end
+-- Your attacks (for Voice reactions: never a "bumped into you" line), from anim_actions names.
+F.ATTACK_ACTIONS = { "punch move r", "punch move l", "punch L 1", "punch R 1", "punch L 2", "punch R 2", "melee", "melee moving",
+  "crouch melee", "crouch melee moving", "prone kick", "prone kick short", "prone kick med", "prone kick long", "prone attack",
+  "prone stab A", "prone stab B", "prone stab C", "move attack a", "move attack b", "crouch attack", "attack a", "attack b",
+  "attack c", "attack d", "kick", "tackle", "tackle back", "tackle left", "tackle right", "Melee" }
+G.hook(G.ACTION_PLAY, function(ctx)
+  local human, n = ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF
+  local mine = human ~= 0 and human == read_u32(G.PLAYER)
+  if mine and not F.face_actions then
+    F.face_actions, F.attack_actions = {}, {}
+    for name in pairs(F.FACE.ACTIONS) do
+      local a = F.action_number(ctx, name)
+      if a then F.face_actions[a] = name end
+    end
+    for _, name in ipairs(F.ATTACK_ACTIONS) do
+      local a = F.action_number(ctx, name)
+      if a then F.attack_actions[a] = true end
+    end
+  end
+  if mine and F.attack_actions[n] then F.REACT.note_attack() end
+  ctx:call_original()
+  -- (after the game starts it: the powerup face lasts while this track plays)
+  if mine and F.on("face_react") and (ctx:r(3)&0xFF)~=0 then
+    if F.face_actions[n] then F.FACE.action(F.face_actions[n],read_u32(human+760))
+    elseif F.attack_actions[n] then F.FACE.trigger('melee',read_u32(human+760)) end
+  end
+end)
+F.FACE.track_live = function(ctx, p, track)
+  if read_u32(p + 760) ~= track then return false end
+  local owner = read_u32(p + G.ANIM_OWNER)
+  local ap = G.pointer_ok(owner) and read_u32(owner + G.OWNER_ANIM_PLAYER) or 0
+  return ap ~= 0 and G.call(ctx, G.ANIM_TRACK_DONE, { ap, track }) == 0
+end
 -- Held: put back every few seconds (a respawn or a cutscene clears it).
-function F.update_expression(ctx, p)
-  if p ~= 0 and F.expression and F.tick % 150 == 40 and not F.model.name then show(ctx, F.expression) end
+function F.update_expression(ctx, p, force)
+  F.FACE.update(p, ctx)
+  if F.TALK then F.TALK.update() end
+  local moment = not FACIAL.preview and F.FACE.face(p) or nil
+  if moment ~= F.face_shown then
+    -- (a moment starts, or ends: back to the face you chose)
+    F.face_shown = moment
+    local ok = FACIAL.request(ctx, moment or F.expression or 'None')
+    if not ok and moment then F.FACE.reset(); F.face_shown = nil; FACIAL.request(ctx, F.expression or 'None') end
+  end
+  FACIAL.tick(F.face_shown or F.expression)
+  require('juiced_player').update(ctx,p)
+  if force then FACIAL.preview=nil end
 end
 end)()
 
@@ -1478,15 +1855,22 @@ do
   G.hook(SUBMIT, function(ctx)
     local req = ctx:r(4) & 0xFFFFFFFF
     local item = F.items.low_health_echo
-    if not F.echoing and item and item.v == true and G.pointer_ok(req) then
+    if not F.echoing and G.pointer_ok(req) then
       local id = read_u32(WARNING_ID)
       if id ~= 0xFFFFFFFF and read_u32(req + 4) == id then
-        local words = {}
-        for k = 0, 15 do words[k] = read_u32(req + k * 4) end
-        echoes = { { at = os.clock() + LENGTH, words = words, share = SHARE } }   -- (one at a time: never layered)
+        if G.hud_health_beat then G.hud_health_beat(item and item.v==true) end
+        if item and item.v == true then
+          local words = {}
+          for k = 0, 15 do words[k] = read_u32(req + k * 4) end
+          echoes = { { at = os.clock() + LENGTH, words = words, share = SHARE } }   -- (one at a time: never layered)
+        end
       end
+      local radial=read_u32(0x827B01F0)
+      if radial~=0xFFFFFFFF and read_u32(req+4)==radial and G.hud_radial_tick then G.hud_radial_tick() end
     end
+    local out=ctx:r(3)&0xFFFFFFFF
     ctx:call_original()
+    if G.hud_sound then G.hud_sound(req,out) end
   end)  function F.update_echo(ctx)
     -- (each echo goes on the update nearest its time, not the first after it)
     local now = os.clock()
@@ -1525,6 +1909,23 @@ do
     for _, g in ipairs(groups) do
       local rows = {}
       for _, id in ipairs(g[3]) do if by_id[id] then rows[#rows + 1] = by_id[id]; taken[id] = true end end
+      if g[1]=="settings_ui_plus" then
+        -- HUD Options holds the HUD switch and the three screen effects.
+        local hud, extras, keep = nil, {}, {}
+        for _,row in ipairs(rows) do
+          if row.id=="tribal_hud" then hud=row
+          elseif row.id=="low_health_fx" or row.id=="low_sprint_fx" or row.id=="low_health_echo" then extras[#extras+1]=row
+          else keep[#keep+1]=row end
+        end
+        if hud then
+          local pg={id="sr22_hud_settings",label="HUD options",kind="page",needs="none",
+            help="The reactive HUD and its two designs, plus the low health and low sprint effects.",
+            open=function() return require("hud_settings").page(hud,extras) end}
+          keep[#keep+1]=pg; F.items.sr22_hud_settings=pg
+        end
+        for i=#rows,1,-1 do rows[i]=nil end
+        for i,row in ipairs(keep) do rows[i]=row end
+      end
       local page = { id = g[1], label = g[2], kind = "page", needs = "none", help = g[4], page_rows = not g.open and rows or nil,
         open = g.open or function() return { title = g[2], rows = rows } end }
       F.items[g[1]] = page
@@ -1549,7 +1950,7 @@ do
     { "player_voice_lines", "Voice Lines", {}, "Every line your character's voice has.", open = function(ctx, p) return F.page_voice_lines(ctx, p) end },
   })
   group("Settings", {
-    { "settings_ui_plus", "UI+", { "low_health_fx", "low_sprint_fx", "low_health_echo" }, "Low health and low sprint screen effects, and the low health sound echo." },
+    { "settings_ui_plus", "UI+", { "tribal_hud", "low_health_fx", "low_sprint_fx", "low_health_echo" }, "HUD styles and their options, and the low health and low sprint screen effects." },
     { "settings_unlocks", "Unlocks", { "unlock_music", "unlock_collectibles", "unlock_clothing" }, "Music, collectibles and clothing." },
     { "settings_tweaks", "Tweak Settings", { "outfit_back", "look_pose", "missing_moves", "loose_parts" },
       "Restore outfit, customization pose, animation fallback, cloth physics." },
@@ -1701,7 +2102,6 @@ function F.update(ctx)
   F.apply_filter()
   if #F.watch_people > 0 then F.check_spawned() end
   if F.tick % 100 == 0 then F.sweep_people(ctx) end
-  if p ~= 0 then F.limit_nitro(p) end
   if F.stop_requested then
     F.stop_requested = false
     if p ~= 0 and (F.posing or F.repeating or F.release_at or F.looping) then
@@ -1715,6 +2115,9 @@ function F.update(ctx)
   if p ~= 0 and #burn_queue > 0 then burn_queued(ctx, p) end
   if p ~= 0 then F.drops_update(ctx, p) end
   if p ~= 0 then F.punch_update(ctx, p) end
+  F.update_slap(ctx, p, F.on("mp_pimp_slap"))
+  -- (a choice row never runs its own update, so the taunts are run here)
+  F.update_taunts(ctx, p)
   if next(patched) and not F.on("rocket_ammo") then F.restore_guns() end
   if F.posing then
     if p == 0 or read_f32(p + G.P.HEALTH) <= 0 or G.screen_up() or G.in_cutscene() then F.release_player(ctx, p) else F.hold_pose(ctx, p) end
@@ -1724,11 +2127,15 @@ function F.update(ctx)
   F.update_model(ctx, p, v)
   F.update_bones(p)
   F.forgive_own_gang(ctx, p)
+  if next(F.slider_pending) then F.flush_sliders(p) end
   if F.look.pending and F.tick >= F.look.pending and not F.model_job and p ~= 0 then F.look_apply(p) end
   F.update_wear(ctx, p)
   F.update_voice(ctx, p, F_menu_open)
   F.update_model_voice(ctx, p, F_menu_open)
+  F.update_reactions(ctx, p, F_menu_open)
   F.update_expression(ctx, p)
+  F.body_gender.update(ctx, p)
+  require('breast_physics').update(p, F.on("breast_physics") and F.body_gender.value or 0, G.vehicle_object(p) == nil)
   F.update_echo(ctx)
   F.update_music(ctx)
   if F.tick % 25 == 0 and p ~= 0 then F.fix_guard_heads(ctx) end
@@ -1829,8 +2236,21 @@ local function own_breath_call(ctx, saying)
   write_u32(p + G.PERSONA_NOW, was)
   return true
 end
+-- Talking (talk_face.lua): the mouth moves for your own lines, not screams or breaths
+-- (70 death scream, 71 fire scream, 73 panting).
+F.TALK = require('talk_face')
+function F.talk_start(ctx, p, situation)
+  if not F.on("talking_mouth") then return end
+  if situation == 70 or situation == 71 or situation == 73 or G.in_cutscene() then return end
+  local R = require('juiced_runtime')
+  if not R.owns(p) then require('juiced_player').prepare(ctx, p) end
+  F.TALK.start()
+end
 G.hook(G.SAY_LINE, function(ctx)
   if (ctx:r(4) & 0xFFFFFFFF) == 70 and (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then F.voice.screamed_at = F.tick end
+  pcall(F.REACT.heard, ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF, read_u32(G.PLAYER), F.say_reaction)
+  if (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) and F.FACE then F.FACE.said(ctx:r(4) & 0xFFFFFFFF) end
+  if (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then F.talk_start(ctx, ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF) end
   if own_breath_call(ctx, true) then return end
   local M = F.model
   local human, situation = ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF
@@ -2294,6 +2714,140 @@ function F.harder_hits(on)
   end
 end
 
+-- The Pimp Slap plays multiplayer's slap. Both games use the same melee
+-- moves (melee.xtbl pimp_slap_stand / pimp_slap_move, "unique Pimp Slap
+-- MP"); what differs is the damage: a player's hit deals PlayerDamage (20)
+-- offline and OnlineDamage (500) in multiplayer (0x82459CD0), and 500 is
+-- what kills and launches people. So the slap's PlayerDamage is set to its
+-- OnlineDamage while the mod is on. LT: empty hands for a moment, so the
+-- trigger throws the game's own left punch, then the slap goes back.
+F.slap = { fists = nil, saved = nil }
+function F.item_name(item)
+  local info = G.pointer_ok(item) and read_u32(item + 8) or 0
+  local namep = G.pointer_ok(info) and read_u32(info) or 0
+  if not G.pointer_ok(namep) then return nil, info end
+  local chars = {}
+  for i = 0, 31 do
+    local c = read_u8(namep + i)
+    if c < 32 or c > 126 then break end
+    chars[#chars + 1] = string.char(c)
+  end
+  return table.concat(chars):lower(), info
+end
+function F.read_name(addr)
+  if not G.pointer_ok(addr) then return nil end
+  local chars = {}
+  for i = 0, 31 do
+    local c = read_u8(addr + i)
+    if c < 32 or c > 126 then break end
+    chars[#chars + 1] = string.char(c)
+  end
+  return table.concat(chars)
+end
+-- The slap's melee move records, with their own PlayerDamage.
+function F.slap_moves()
+  local base, n = read_u32(G.MELEE_MOVES), read_u32(G.MELEE_MOVES + 4)
+  if not G.pointer_ok(base) or n <= 0 or n > 512 then return nil end
+  local found = {}
+  for i = 0, n - 1 do
+    local m = base + i * G.MELEE_MOVE_SIZE
+    local name = F.read_name(read_u32(m))
+    if name == "pimp_slap_stand" or name == "pimp_slap_move" then found[#found + 1] = m end
+  end
+  return #found > 0 and found or nil
+end
+function F.update_slap(ctx, p, on)
+  local S = F.slap
+  on = on and read_u8(G.MULTIPLAYER) == 0
+  if on and not S.saved then
+    local moves = F.slap_moves()
+    if moves then
+      S.saved = {}
+      for _, m in ipairs(moves) do
+        S.saved[m] = read_f32(m + G.MELEE.PLAYER_DAMAGE)
+        write_f32(m + G.MELEE.PLAYER_DAMAGE, read_f32(m + G.MELEE.ONLINE_DAMAGE))
+      end
+    end
+  elseif not on and S.saved then
+    for m, dmg in pairs(S.saved) do write_f32(m + G.MELEE.PLAYER_DAMAGE, dmg) end
+    S.saved = nil
+  end
+  local item = p ~= 0 and read_u32(p + G.P.EQUIPPED) or 0
+  local name = F.item_name(item)
+  local slap = on and name == "pimp_slap"
+  S.slap_out = slap
+  local lt = (FREECAM.pad and FREECAM.pad.lt or 0) > 100
+  if slap and lt and not S.fists then
+    S.fists = { item = item, til = F.tick + 25 }
+    G.call(ctx, G.PLAYER_EQUIP, { p, 0, 0 })
+  elseif S.fists then
+    if lt and on then S.fists.til = F.tick + 25 end
+    if F.tick >= S.fists.til or not on then
+      local back = S.fists.item
+      S.fists = nil
+      if p ~= 0 and G.pointer_ok(back) and read_u32(p + G.P.EQUIPPED) == 0 then G.call(ctx, G.PLAYER_EQUIP, { p, back, 0 }) end
+    end
+  end
+end
+
+-- D-pad taunts the way multiplayer does them (D-pad taunts: Multiplayer style). In
+-- multiplayer the game reads D-pad down, left and right as Taunt 1, 2 and
+-- 3 (0x8216A038) and plays that action straight on top of what you're
+-- doing - no stop, no lock - unless a melee move is running; holding the
+-- button doesn't repeat it. Each comes with a voice line 3 times in 4
+-- (down a knocked-down taunt, left a congratulate or cheer, right a cheer,
+-- gang sign or walk-by line). The game doesn't see those three directions.
+F.TAUNTS = {
+  [0x2] = { "Taunt 2", 1, { "threat - knocked down NPC/PC" } },
+  [0x4] = { "compliment", 2, { "combat - congratulate self", "combat - congratulate player", "voice - cheer" } },
+  [0x8] = { "interaction gang sign stand 2", 3, { "voice - cheer", "observe - PC (flash gang sign rank 2)", "misc - walk by ambient" } },
+}
+F.taunt_prev = 0
+-- (from the controller hook: the buttons the game shouldn't see)
+function F.pad_take(buttons, lt)
+  local hide = 0
+  if F.enabled and F.items.dpad_taunts and F.items.dpad_taunts.v == 4 and G.player() ~= 0 and not F.model.name and not F_menu_open then
+    -- (Weapon switch on the D-pad keeps left and right for weapons)
+    local switching = F.on("weapon_switch") and F.items.weapon_dpad.v == 1
+    for bit in pairs(F.TAUNTS) do
+      -- (Heal on D-pad down keeps down for the heal)
+      if (buttons & bit) ~= 0 and not (bit == 0x2 and F.on("dpad_heal")) and not (bit ~= 0x2 and switching) then
+        hide = hide | bit
+        if (F.taunt_prev & bit) == 0 then F.taunt_pending = bit end
+      end
+    end
+  end
+  F.taunt_prev = buttons
+  local S = F.slap
+  if S and S.slap_out and not S.fists and lt > 100 then hide = hide | 0x10000 end  -- (LT: the punch, not a slap)
+  return hide
+end
+function F.update_taunts(ctx, p)
+  -- (standing still only: a taunt while running played on the spot while you slid along)
+  local moving = false
+  if p ~= 0 then
+    local x, _, z = G.vec(p + G.P.POS)
+    local l = F.taunt_pos
+    moving = l ~= nil and ((x - l[1]) ^ 2 + (z - l[2]) ^ 2) > 0.0004
+    F.taunt_pos = { x, z }
+  end
+  if moving then F.taunt_pending = nil end
+  local bit = F.taunt_pending
+  if not bit or p == 0 then return end
+  F.taunt_pending = nil
+  local t = F.TAUNTS[bit]
+  local why = (read_u32(p + G.H_MELEE_MOVE) ~= 0xFFFFFFFF and "melee move") or (read_u32(p + 508) == 23 and "state 23")
+    or ((F.posing or F.looping or F.repeating) and "emote") or (G.vehicle_object(p) and "in a vehicle")
+  local n = not why and F.action_number(ctx, t[1])
+  if not why and not n then why = "no action" end
+  local ok = n and G.call(ctx, G.ACTION_PLAY, { p, n, 0, 1, 0, 0, 0, 0xFFFFFFFF }, { 0.0, 1.0, -1.0 }) or 0
+  wml.log(string.format("taunt: %s -> %s", t[1], why or ((ok & 0xFF) ~= 0 and "played" or "refused")))
+  if (ok & 0xFF) == 0 then return end
+  if F.random() < 0.75 then
+    enqueue(string.format('audio_play_persona_line_do("#PLAYER#", "%s", -1)', t[3][F.random(1, #t[3])]))
+  end
+end
+
 -- A global float set while a toggle is on, the game's value put back off.
 local held = {}
 function F.hold_float(addr, value)
@@ -2390,6 +2944,9 @@ function F.restore_guns()
 end
 
 G.hook(G.FIRE, function(ctx)
+  local function fire()
+    if G.hud_fire then G.hud_fire(ctx) else ctx:call_original() end
+  end
   local shooter = ctx:r(3) & 0xFFFFFFFF
   local p = read_u32(G.PLAYER)
   local info = (shooter ~= 0 and shooter == p and F.on("rocket_ammo") and not G.vehicle_object(p)) and F.gun_info(p) or nil
@@ -2404,15 +2961,15 @@ G.hook(G.FIRE, function(ctx)
       patched[info] = words
     end
   end
-  if not (info and patched[info]) then ctx:call_original() return end
+  if not (info and patched[info]) then fire() return end
   local now = os.clock()
-  if now - last_rocket < ROCKET_GAP or rockets_in_air() >= ROCKET_MAX then ctx:call_original() return end
+  if now - last_rocket < ROCKET_GAP or rockets_in_air() >= ROCKET_MAX then fire() return end
   last_rocket = now
   local old_type, old_flags, old_shots = read_u32(info + 100), read_u8(info + 12), read_u8(info + 164)
   write_u32(info + 100, 1)
   write_u8(info + 12, old_flags | (read_u8(rpg_info + 12) & 0x60))
   write_u8(info + 164, 1)
-  local ok, err = pcall(function() ctx:call_original() end)
+  local ok, err = pcall(fire)
   write_u32(info + 100, old_type)
   write_u8(info + 12, old_flags)
   write_u8(info + 164, old_shots)
@@ -2450,28 +3007,47 @@ end
 
 -- ------------------------------------------------------------- nitrous
 --
--- patch.lua gives every car nitrous in the vehicle table at start. With
--- the toggle off, a boost on your car is cancelled straight away (the
--- engine applies nitrous while engine+380 is 1), except on the cars that
--- had nitrous in the game: the vehicle record is at vehicle+50324, its
--- name at +96.
-local NITRO_ORIGINAL = { sp_derbycar01 = true, sp_derbycar02 = true, truck_2dr_semi02 = true }
-local nitro_cache = {}
-function F.limit_nitro(p)
-  if F.on("nitro_all") then return end
-  local v = G.vehicle_object(p)
-  if not v then return end
-  local e = G.engine_object(v)
-  if not e or read_u8(e + 380) ~= 1 then return end
+-- patch.lua gives every car nitrous in the vehicle table (Nitro_Capable)
+-- only when the game starts with Nitrous in every vehicle on (saved tweak
+-- or mod.ini, read the same way here). Switched off after that, nitrous is
+-- refused where the game turns it on: set_nitro(vehicle, on) (0x8253FE38),
+-- which the driving code calls every frame the button is held. Cancelling
+-- the engine's flag (+380) afterwards wasn't enough: the push ran each frame
+-- before it, and the flames and sound stayed on. Cars that had nitrous in
+-- the game keep it: the vehicle record is at vehicle+50324, its name at +96.
+F.NITRO_ORIGINAL = { sp_derbycar01 = true, sp_derbycar02 = true, truck_2dr_semi02 = true }
+do
+  local saved
+  local f = io.open(wml.mod_folder .. "/saved_tweaks.ini", "r")
+  if f then
+    for line in f:lines() do
+      local k, v = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
+      if k == "nitro_all" and not line:match("^%s*;") then saved = v == "true" end
+    end
+    f:close()
+  end
+  if saved == nil then saved = S("vehicle_nitrous_everywhere", false) == true end
+  F.nitro_patched = saved
+end
+F.nitro_cache = {}
+function F.nitro_original(v)
   local info = read_u32(v + 50324)
-  local original = nitro_cache[info]
+  if not G.pointer_ok(info) then return true end   -- (unknown: leave it to the game)
+  local original = F.nitro_cache[info]
   if original == nil then
     local chars, np = {}, info + 96
     for k = 0, 23 do local c = read_u8(np + k) if c == 0 then break end chars[#chars + 1] = string.char(c) end
-    original = NITRO_ORIGINAL[table.concat(chars):lower()] or false
-    nitro_cache[info] = original
+    original = F.NITRO_ORIGINAL[table.concat(chars):lower()] or false
+    F.nitro_cache[info] = original
   end
-  if not original then write_u8(e + 380, 0) end
+  return original
+end
+if F.nitro_patched then
+  G.hook(G.VEHICLE_NITRO, function(ctx)
+    local v, on = ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFF
+    if on ~= 0 and not F.on("nitro_all") and G.pointer_ok(v) and not F.nitro_original(v) then return end
+    ctx:call_original()
+  end)
 end
 
 -- ------------------------------------------------------------- repeat action
@@ -2515,18 +3091,40 @@ end
 -- set once per change, and only cleared if this menu set it (Modern Look
 -- uses the same channel).
 local look_set = false
+-- The loader's look: the filter's, with Bloom's strength on top (a neutral
+-- look when only Bloom is on); cleared when neither is.
+F.NEUTRAL_LOOK = { 0, 0, 0.8, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 }
+function F.push_look()
+  local bloom = F.enabled and F.items.bloom and F.items.bloom.v or 0
+  local base = F.filter and F.filter[5]
+  if not base and bloom <= 0 then
+    if look_set then pcall(wml.set_look); look_set = false end
+    return true
+  end
+  local look = {}
+  for i, v in ipairs(base or F.NEUTRAL_LOOK) do look[i] = v end
+  if bloom > 0 then look[2] = bloom; look[3] = math.min(look[3], 0.7) end
+  local ok = pcall(wml.set_look, look)
+  look_set = ok
+  return ok
+end
 function F.set_filter(filter)
   if filter[3] == nil then
     F.filter = nil
     write_f32(G.VAR.SATURATION, F.items.saturation.v)
     write_f32(G.TINT, 1); write_f32(G.TINT + 4, 1); write_f32(G.TINT + 8, 1)
-    if look_set then pcall(wml.set_look); look_set = false end
+    F.push_look()
     return "Filter off"
   end
   F.filter = filter
-  local ok = pcall(wml.set_look, filter[5])
-  look_set = ok
+  local ok = F.push_look()
   return "Filter: " .. filter[2] .. (ok and "" or " (colour only)")
+end
+function F.set_draw_distance(ctx, n, quiet)
+  local d = F.DRAW_DISTANCES[n] or F.DRAW_DISTANCES[1]
+  if not ctx then return end
+  G.console(ctx, d[2] and ("r_force_fade_dist " .. d[2]) or "r_force_fade_dist off")
+  if not quiet then return "Draw Distance: " .. d[1] end
 end
 
 function F.apply_filter()
@@ -3042,6 +3640,42 @@ local function resolve(group, state, chain, armed_only)
 end
 F.resolve_animation = resolve
 
+-- Heavy guns keep the game's own walk, run and sprint for styles that don't
+-- carry them: no sprint style with a shotgun, RPG or AK; with an AK or a
+-- shotgun the street, skater, mascot and variant runs fall back too; and
+-- the same walks (and every walk variant) with those and the RPG.
+F.HEAVY = { pump_action_shotgun = "shotgun", twelve_gauge = "shotgun", spas12 = "shotgun", rpg_launcher = "rpg", ak47 = "ak", ak47l = "ak" }
+F.HEAVY_STYLES = { ["Street: Man"] = true, ["Street: Heavyset man"] = true, ["Street: Elderly"] = true,
+  ["Street: Roller skater"] = true, ["Special: Mascot"] = true, ["Run variant 1"] = true }
+function F.heavy_weapon()
+  if F.heavy_tick ~= F.tick then
+    F.heavy_tick, F.heavy_now = F.tick, nil
+    local p = G.player()
+    local item = p ~= 0 and read_u32(p + G.P.EQUIPPED) or 0
+    local info = G.pointer_ok(item) and read_u32(item + 8) or 0
+    local namep = G.pointer_ok(info) and read_u32(info) or 0
+    if G.pointer_ok(namep) then
+      local chars = {}
+      for i = 0, 31 do
+        local c = read_u8(namep + i)
+        if c < 32 or c > 126 then break end
+        chars[#chars + 1] = string.char(c)
+      end
+      F.heavy_now = F.HEAVY[table.concat(chars):lower()]
+    end
+  end
+  return F.heavy_now
+end
+function F.heavy_blocks(e)
+  local part = e.part
+  if part ~= "walk" and part ~= "run" and part ~= "sprint" then return false end
+  local kind = F.heavy_weapon()
+  if not kind then return false end
+  if part == "sprint" then return true end
+  if part == "run" then return kind ~= "rpg" and F.HEAVY_STYLES[e.label] == true end
+  return F.HEAVY_STYLES[e.label] == true or (e.label or ""):find("^Walk variant") ~= nil
+end
+
 -- The melee family of weapon groups (Melee, Melee 1h / 2h and what's under
 -- them: knife, nightstick, stun gun, thrown, pimp slap): Melee is the child
 -- of Default whose children include one with four or more of its own.
@@ -3066,11 +3700,32 @@ local function melee_groups()
   return family
 end
 
+-- The idle fidgets (actions): none while a movement preview plays, so you
+-- see the move itself. Asked for one, the game gets your stand instead.
+F.IDLE_NAMES = { "idle", "stand idle a", "stand idle b" }
+for i = 1, 8 do F.IDLE_NAMES[#F.IDLE_NAMES + 1] = "idle variant " .. i end
+function F.no_idle(ctx, state)
+  local P = F.move_preview
+  if not P or P.punched then return nil end
+  if not F.idle_actions then
+    F.idle_actions = {}
+    for _, name in ipairs(F.IDLE_NAMES) do
+      local n = F.action_number(ctx, name)
+      if n then F.idle_actions[227 + n] = true end
+    end
+  end
+  if not F.idle_actions[state] then return nil end
+  local stand = state_number_of(ctx, "stand")
+  return stand ~= MASK and stand or nil
+end
 G.hook(G.ANIM_LOOKUP, function(ctx)
   local m = F.move
   local set = ctx:r(3) & MASK
+  local still = F.move_preview and F.no_idle(ctx, ctx:r(5) & MASK)
+  if still then ctx:set_r(5, still) end
   if set ~= m.srt or set == 0 then ctx:call_original() return end
   local group, state = ctx:r(4) & MASK, ctx:r(5) & MASK
+  local armed_stand=group~=0 and not (m.melee and m.melee[group]) and state==state_number_of(ctx,"stand")
   local anim
   if group < 22 and state < 867 then
     -- A part of how you move (stance, walk, run ... combat) set to another
@@ -3101,9 +3756,10 @@ G.hook(G.ANIM_LOOKUP, function(ctx)
           end
         end
         if not anim and o.any then anim = resolve(group, o.any.alt or state, o.any.chain or m.chain) end
-        if not anim and o.default then
+        if not anim and o.default and not F.heavy_blocks(o.default) then
           local d = o.default
-          anim = resolve(group, d.alt or state, d.chain or m.chain, true) or resolve(0, d.alt or state, d.chain or m.chain)
+          anim = resolve(group, d.alt or state, d.chain or m.chain, true)
+            or (not armed_stand and resolve(0, d.alt or state, d.chain or m.chain))
         end
       end
     end
@@ -3112,7 +3768,10 @@ G.hook(G.ANIM_LOOKUP, function(ctx)
     -- A gun out: the gang set's way of holding it before a pedestrian set's
     -- (they hold a pistol up at arm's length, or hang it at their side).
     if not anim and group ~= 0 and m.armed then anim = resolve(group, state, m.armed, true) end
-    anim = anim or resolve(group, state, m.chain)
+    anim = anim or resolve(group, state, m.chain, armed_stand)
+    -- A pedestrian set can lack a gun hold. Prefer the player base and its
+    -- weapon ancestors before allowing Default-group inheritance.
+    if not anim then anim = resolve(group, state, m.chain) end
   end
   ctx:set_r(3, anim or MASK)
 end)
@@ -3156,8 +3815,8 @@ end
 
 -- Movement preview (Customize, as your Playa): while the cursor is on one of
 -- the movement parts, your Playa does that move on the spot with the choice
--- shown - stands, walks, runs, sprints, or throws punches; A keeps it,
--- moving off puts back what you had.
+-- shown - stands, walks, runs, sprints, or throws punches; the choice
+-- showing when you move off is kept.
 local PREVIEW_STATE = { stance = "stand", walk = "walk", run = "run", sprint = "sprint", melee_run = "run" }
 -- Whether the kit chosen for a fighting move has it for the weapon group in
 -- hand (or, a melee kit, for any melee weapon); Default has everything.
@@ -3202,8 +3861,6 @@ function F.preview_move(ctx, p, it)
       P.bat, P.fists = nil, nil
     end
     P.key = key
-    for k in pairs(m.parts) do m.parts[k] = nil end
-    for k, v in pairs(P.parts) do m.parts[k] = v end
     if it.part then m.parts[it.part] = e and e[1] or 0 end
     F.apply_movement(ctx, p)
   end
@@ -3317,9 +3974,10 @@ function F.end_preview_move(ctx, p)
     if G.pointer_ok(P.fists.weapon) then G.call(ctx, G.PLAYER_EQUIP, { p, P.fists.weapon, 0 }) end
     P.fists = nil
   end
-  local m = F.move
-  for k in pairs(m.parts) do m.parts[k] = nil end
-  for k, v in pairs(P.parts) do m.parts[k] = v end
+  -- The choice shown on the row is the one you keep (moving off with a
+  -- different one showing used to put the old one back while the row still
+  -- showed the new: Female sprint shown, Zombie played).
+  F.save_movement()
   if p ~= 0 then
     F.apply_movement(ctx, p)
     write_u32(p + G.ANIM_STATE, P.state)
@@ -3416,7 +4074,7 @@ function F.update_movement(ctx, p)
             if n == MASK and part[1] ~= "combat" and part[1] ~= "melee_combat" then n = state_number_of(ctx, sname) end
             if n ~= MASK then
               m.over[n] = m.over[n] or {}
-              m.over[n][part[4]] = { chain = chain, alt = alt ~= MASK and alt or nil }
+              m.over[n][part[4]] = { chain = chain, alt = alt ~= MASK and alt or nil, part = part[1], label = opt[1] }
             end
           end
         end
@@ -3482,6 +4140,10 @@ end
 local function own_definition(def)
   local name = G.pointer_ok(def) and cstring(read_u32(def + G.D.NAME), 40)
   return name and name:lower() == "styletest_pc"
+end
+F.body_gender.enabled=function()
+  local p=G.player()
+  return F.enabled and not F.model.name and p~=0 and own_definition(read_u32(p+G.HUMAN_DEF))
 end
 
 -- ------------------------------------------------------- build and kit
@@ -3606,6 +4268,20 @@ function F.set_fitting(p, on)
   Fi.on = Fi.player ~= 0
 end
 
+-- In Customize the weapon leaves your hand (empty hands equipped directly,
+-- as for the Combat preview) and comes back when you leave the tab.
+function F.unarm_for_customize(ctx, p, on)
+  local Fi = F.fitting
+  if on and p ~= 0 and Fi.weapon == nil then
+    Fi.weapon = read_u32(p + G.P.EQUIPPED)
+    if G.pointer_ok(Fi.weapon) then G.call(ctx, G.PLAYER_EQUIP, { p, 0, 0 }) end
+  elseif not on and Fi.weapon ~= nil then
+    local w = Fi.weapon
+    Fi.weapon = nil
+    if p ~= 0 and G.pointer_ok(w) and read_u32(p + G.P.EQUIPPED) == 0 then G.call(ctx, G.PLAYER_EQUIP, { p, w, 0 }) end
+  end
+end
+
 G.hook(G.POSE_BUILD, function(ctx)
   local Fi = F.fitting
   if Fi.on and (ctx:r(3) & MASK) == Fi.player then
@@ -3682,7 +4358,7 @@ function F.reload_character(ctx, p)
   -- Explicit recovery for the old preview's persistent holster() lock.
   G.script(ctx, "unholster()")
   local M = F.model
-  F.model_job = { name = M.name, label = M.label or "your character", phase = "start", user = true, reload = true }
+  F.model_job = { name = M.name, label = M.label or "your character", phase = "start", user = true, reload = true, player = p, handle = read_u32(p + 68), weapon = read_u32(p + G.P.EQUIPPED) }
   return "Reloading your character..."
 end
 function F.request_model(p, character, look)
@@ -4102,6 +4778,7 @@ function F.unlock_clothing(ctx, p)
   if added == 0 then return read_u32(p + G.OWNED_COUNT) >= G.OWNED_MAX and "Your wardrobe is full" or "You already own every piece" end
   return string.format("%d pieces of clothing and jewelry added to your wardrobe", added)
 end
+
 -- Clothes no store sells (customization_items.xtbl): multiplayer's own,
 -- and the activities' rewards (unlockables.xtbl). Unlock multiplayer /
 -- reward clothing (extras.lua) add them the same way.
@@ -4550,6 +5227,24 @@ function F.page_store(ctx, p, title, cats)
   end
   return { title = title, rows = rows }
 end
+-- Randomize (Clothes, X / R): each kind of clothing you have on now gets a
+-- random piece of that kind in a random colour; empty slots stay empty.
+function F.randomize_clothes(ctx, p, cats)
+  local rnd, n = F.random, 0
+  for _, cat in ipairs(cats or CLOTHES) do
+    local entries = CUSTOM.items[cat]
+    if entries and #entries > 0 then
+      local S = session(ctx, p, entries, cat)
+      if #S.kept > 0 then
+        for _ = 1, 4 do  -- (a piece that can't go on with the rest: try another)
+          local e = entries[rnd(1, #entries)]
+          if not wear(ctx, p, e, 1, rnd(1, math.max(1, #e[5])), cat, S.set) then n = n + 1; break end
+        end
+      end
+    end
+  end
+  return n > 0 and "Randomized your clothes" or "You aren't wearing any clothes to randomize"
+end
 
 -- Sliders: a set's, basic then advanced, like the creator.
 local function slider_addr(p, n)
@@ -4560,7 +5255,16 @@ local function slider_addr(p, n)
   if not G.pointer_ok(sliders) or index > 127 then return nil end
   return sliders + index * 12 + 4
 end
+-- Menu slider moves go to the game one at a time: each new value makes the
+-- game re-bake the part (record +8 is the value last baked), and writing a
+-- new one before the last bake finished showed the old shape flickering on
+-- and off. So the next value goes in as soon as the last one is baked (or
+-- after SLIDER_WAIT ticks), and the part follows the slider as it moves.
+local SLIDER_WAIT = 15
+F.slider_pending = {}
 function F.slider_value(p, n)
+  local wait = F.slider_pending[n]
+  if wait and wait.p == p then return math.floor(wait.v + 0.5) end
   local a = slider_addr(p, n)
   if not a then return nil end
   local v = read_f32(a)
@@ -4568,8 +5272,40 @@ function F.slider_value(p, n)
   return math.floor(math.max(0, math.min(1, v)) * 100 + 0.5)
 end
 function F.set_slider(p, n, amount)
+  F.slider_pending[n] = nil
   local a = slider_addr(p, n)
   if a then write_f32(a, math.max(0, math.min(100, amount)) / 100) end
+end
+F.slider_sent = {}
+function F.set_slider_soon(p, n, amount)
+  F.slider_pending[n] = { p = p, v = math.max(0, math.min(100, amount)) }
+  F.flush_sliders(p)
+end
+function F.flush_sliders(p, all)
+  for n, wait in pairs(F.slider_pending) do
+    if wait.p ~= p then F.slider_pending[n] = nil
+    else
+      local a = slider_addr(p, n)
+      local sent = F.slider_sent[n]
+      local baked = not a or not sent or math.abs(read_f32(a + 4) - read_f32(a)) < 1e-4
+      if all or baked or F.tick >= sent then
+        F.set_slider(p, n, wait.v)
+        F.slider_sent[n] = F.tick + SLIDER_WAIT
+      end
+    end
+  end
+end
+F.body_gender.inputs=function(p)
+  local fat,muscle=0,0
+  for n,s in ipairs(CUSTOM.sliders) do
+    if s[1]=='Body' then
+      local a=slider_addr(p,n)
+      local v=a and read_f32(a+4) or 0 -- last native bake, not a pending slider edit
+      if v~=v then v=0 end
+      if s[2]=='fat' then fat=v elseif s[2]=='muscle' then muscle=v end
+    end
+  end
+  return fat,muscle
 end
 local function slider_rows(p, set, rows)
   rows = rows or {}
@@ -4582,7 +5318,7 @@ local function slider_rows(p, set, rows)
         rows[#rows + 1] = { label = s[4], kind = "value", bar = true, min = 0, max = 100, step = 2, default = 50,
           v = F.slider_value(p, n) or 50, live = true, fmt = function(v) return string.format("%d", math.floor(v + 0.5)) end,
           read = function(pp) return F.slider_value(pp, n) end,
-          change = function(_, pp, _, it) F.set_slider(pp, n, it.v) end }
+          change = function(_, pp, _, it) F.set_slider_soon(pp, n, it.v) end }
       end
     end
   end
@@ -4590,7 +5326,17 @@ local function slider_rows(p, set, rows)
 end
 F.slider_rows = slider_rows
 function F.page_sliders(ctx, p, set, title)
-  return { title = title, rows = slider_rows(p, set) }
+  local rows=slider_rows(p,set)
+  if set=='Body' then
+    local body=F.body_gender
+    rows[#rows+1]={label='Body Type',kind='value',bar=true,min=-50,max=50,step=1,default=0,
+      v=body.value,live=true,fmt=function(v) return string.format('%d',math.floor(v+.5)) end,
+      read=function() return body.value end,note=function() return body.note() end,
+      help='Slide left for a more feminine body: -50 is fully female, 0 is your normal build. Your clothes reshape to fit.',
+      change=function(c,pp,_,it) local ok,why=body.set(c,pp,it.v);if not ok then it.v=body.value;return why end end,
+      hover=function(c,pp) if body.value<0 and not body.owns(pp) then body.set(c,pp,body.value) end end}
+  end
+  return { title = title, rows = rows }
 end
 local HEAD = { "Face_Scale", "Brow", "Nose", "Mouth", "Jaws", "Cheeks", "Ears" }
 function F.page_head(ctx, p)
@@ -4656,19 +5402,78 @@ function F.page_hair(ctx, p)
     rows[#rows + 1] = { label = CUSTOM.categories[kind] or kind, kind = "page", 
       open = function(c, pp) return F.page_hair_kind(c, pp, kind) end }
   end
-  return { title = "Hair", rows = rows }
+  -- (headwear off while you choose)
+  local U = F.undress(ctx, p, { "Hat" }, { what = "headwear" })
+  return { title = "Hair", rows = rows, back = U.back, prompts = { U.prompt } }
+end
+function F.randomize_page(ctx, p, rows, depth)
+  local rnd, picks, n = F.random, {}, 0
+  depth = depth or 0
+  for _, it in ipairs(rows) do
+    if not (it.hidden and it.hidden()) then
+      -- (a page of parts, like Head: each part inside is randomized too)
+      if it.kind == "page" and it.open and depth < 2 and it.label ~= "Saved Presets" then
+        local ok, pg = pcall(it.open, ctx, p)
+        if ok and type(pg) == "table" and pg.rows and not pg.back then
+          if F.randomize_page(ctx, p, pg.rows, depth + 1) == "Randomized." then n = n + 1 end
+        elseif ok and type(pg) == "table" and pg.back then pcall(pg.back, ctx, p) end
+      end
+      if it.kind == "value" and it.min and it.max then
+        local step = it.step or 1
+        it.v = it.min + math.floor((rnd() * (it.max - it.min)) / step + 0.5) * step
+        if it.change then pcall(it.change, ctx, p, 0, it) end; n = n + 1
+      elseif (it.kind == "choice" or it.kind == "list") and (it.options or it.items) then
+        local m = #(it.options or it.items)
+        if m > 0 then it.v = rnd(1, m); if it.change then pcall(it.change, ctx, p, 0, it) end; n = n + 1 end
+      elseif it.kind == "action" and it.run and not (it.label or ""):lower():find("random") then picks[#picks + 1] = it end
+    end
+  end
+  if n == 0 and #picks > 0 then local it = picks[rnd(1, #picks)]; pcall(it.run, ctx, p, it); n = 1 end
+  return n > 0 and "Randomized." or "Nothing to randomize here"
+end
+-- Randomize (Face & Body, X / R): a new face and body - every slider, eyes,
+-- hair, facial hair and their colours. Clothes stay as they are.
+F.random = math.random
+function F.randomize_look(ctx, p)
+  local rnd = F.random
+  for n in ipairs(CUSTOM.sliders) do
+    -- (two rolls averaged: most faces near the middle, a few extreme)
+    F.set_slider(p, n, math.floor((rnd(0, 100) + rnd(0, 100)) / 2))
+  end
+  local eyes = CUSTOM.items.Eyes or {}
+  if #eyes > 0 then
+    local e = eyes[rnd(1, #eyes)]
+    wear(ctx, p, e, 1, rnd(1, math.max(1, #e[6])), "Eyes", set_of(ctx, eyes))
+  end
+  local colour = rnd(1, math.max(1, #CUSTOM.hair_colours))
+  for _, kind in ipairs(HAIR) do
+    local list = CUSTOM.items[kind] or {}
+    local set = set_of(ctx, list)
+    -- (facial hair: about half the time none)
+    if #list > 0 and (kind == "Hair" or kind == "Eyebrows" or rnd() < 0.5) then
+      local e = list[rnd(1, #list)]
+      if wear(ctx, p, e, 1, rnd(1, math.max(1, #e[5])), kind, set) then
+        F.hair_colour[kind] = colour
+        put_colour(ctx, p, set, colour)
+      end
+    elseif #list > 0 then
+      take_off(ctx, p, set)
+    end
+  end
+  return "Randomized."
 end
 
 -- Rusty's Needle: where it goes, then the designs.
 local AREAS = { "Back", "Chest", "Left Shoulder", "Right Shoulder", "Left Forearm", "Right Forearm", "Left Leg", "Right Leg" }
--- Remove Clothing (Style): every piece of clothing off - hat to shoes - for a
--- clean slate; underwear and jewelry stay, and a plain pair of socks goes on
+-- Remove Clothing (Style): every piece of clothing and jewelry off - hat to
+-- shoes - for a clean slate; underwear stays, and a plain pair of socks goes on
 -- (your feet are the socks' and shoes' meshes: with neither, no feet).
 function F.remove_clothing(ctx, p)
   local all = {}
   for _, cat in ipairs(CLOTHES) do
     if cat ~= "Underwear" then for _, e in ipairs(CUSTOM.items[cat] or {}) do all[#all + 1] = e end end
   end
+  for _, cat in ipairs(JEWELRY) do for _, e in ipairs(CUSTOM.items[cat] or {}) do all[#all + 1] = e end end
   local n = take_off(ctx, p, set_of(ctx, all))
   local plain = CUSTOM.items.Socks and CUSTOM.items.Socks[1]
   if plain then wear(ctx, p, plain, 1, 1, "Socks", set_of(ctx, CUSTOM.items.Socks)) end
@@ -4676,20 +5481,91 @@ function F.remove_clothing(ctx, p)
 end
 
 -- Like the parlour: down to your underwear and socks while you choose
--- (jewelry, hair and the rest stay), dressed again when you leave Tattoos.
+-- (jewelry, hair and the rest stay), dressed again when you leave.
 local STRIP_FOR_TATTOOS = { "Hat", "Eyewear", "Coat", "Overshirt", "Undershirt", "Special T-Shirts", "Pants", "Belt", "Shoes" }   -- (socks stay: no bare stumps)
-function F.page_tattoos(ctx, p)
+F.STRIP_FOR_FACE = STRIP_FOR_TATTOOS
+-- A female body (the Body type slider more than a quarter of the way to
+-- female) gets the game's white tank top while undressed.
+function F.female_body(p)
+  return (F.body_gender and (F.body_gender.value or 0) <= -12.5) or F.def_female(read_u32(p + G.HUMAN_DEF))
+end
+function F.tank_top()
+  for _, e in ipairs(CUSTOM.items.Undershirt or {}) do if e[1] == "tank tops" then return e end end
+end
+-- Undress for a page: cats come off on opening and go back on when you leave.
+-- U.row is the Show / Hide row (H on the keyboard, R3 on a controller).
+function F.undress(ctx, p, cats, opts)
+  opts = opts or {}
   local clothes = {}
-  for _, cat in ipairs(STRIP_FOR_TATTOOS) do for _, e in ipairs(CUSTOM.items[cat] or {}) do clothes[#clothes + 1] = e end end
-  local dressed = set_of(ctx, clothes)
-  local outfit = snapshot(p, dressed)
-  if #outfit > 0 then take_off(ctx, p, dressed) end
-  -- No socks on: a plain pair while you choose (feet are the socks' and shoes' meshes).
-  local socks = set_of(ctx, CUSTOM.items.Socks or {})
-  local lent = nil
-  if #snapshot(p, socks) == 0 and CUSTOM.items.Socks and CUSTOM.items.Socks[1] then
-    if not wear(ctx, p, CUSTOM.items.Socks[1], 1, 1, "Socks", socks) then lent = socks end
+  for _, cat in ipairs(cats) do for _, e in ipairs(CUSTOM.items[cat] or {}) do clothes[#clothes + 1] = e end end
+  local U = { dressed = set_of(ctx, clothes), hidden = false, outfit = {} }
+  function U.hide(c, pp)
+    if U.hidden then return end
+    U.hidden = true
+    U.outfit = snapshot(pp, U.dressed)
+    if #U.outfit > 0 then take_off(c, pp, U.dressed) end
+    -- A female body (opts.decent): tank top and underwear stay; socks,
+    -- necklaces, wrist pieces and rings come off, and white/purple sneakers
+    -- go on while you edit (no stumps without socks).
+    local female = F.female_body(pp)
+    if opts.decent and female then
+      local extra = {}
+      for _, cat in ipairs({ "Socks", "Necklace High", "Necklace Medium", "Necklace Low", "Pendant", "Medallion", "Left Wrist", "Right Wrist", "Ring" }) do
+        for _, e in ipairs(CUSTOM.items[cat] or {}) do extra[#extra + 1] = e end
+      end
+      U.extra = set_of(c, extra)
+      U.extra_outfit = snapshot(pp, U.extra)
+      if #U.extra_outfit > 0 then take_off(c, pp, U.extra) end
+      for _, e in ipairs(CUSTOM.items.Shoes or {}) do
+        if e[1] == "sneakers" then
+          local vi = 1
+          for i, v in ipairs(e[5]) do if v == "sneakers_purple" then vi = i end end
+          local set = set_of(c, { e })
+          if not wear(c, pp, e, 1, vi, "Shoes", set) then U.shoes = set end
+        end
+      end
+    end
+    -- No socks on: a plain pair while you choose (feet are the socks' and shoes' meshes).
+    if opts.socks and not U.shoes then
+      local socks = set_of(c, CUSTOM.items.Socks or {})
+      if #snapshot(pp, socks) == 0 and CUSTOM.items.Socks and CUSTOM.items.Socks[1] then
+        if wear(c, pp, CUSTOM.items.Socks[1], 1, 1, "Socks", socks) then U.lent = socks end
+      end
+    end
+    local tank = opts.tank and F.tank_top()
+    if tank and F.female_body(pp) then
+      local set = set_of(c, { tank })
+      if wear(c, pp, tank, 1, 1, "Undershirt", set) then U.tank = set end
+    end
   end
+  function U.show(c, pp)
+    if not U.hidden then return end
+    U.hidden = false
+    if U.tank then take_off(c, pp, U.tank); U.tank = nil end
+    if U.lent then take_off(c, pp, U.lent); U.lent = nil end
+    if U.shoes then take_off(c, pp, U.shoes); U.shoes = nil end
+    if U.extra then
+      if #U.extra_outfit > 0 then restore(c, pp, U.extra, U.extra_outfit) end
+      U.extra, U.extra_outfit = nil, nil
+    end
+    if #U.outfit > 0 then restore(c, pp, U.dressed, U.outfit) end
+  end
+  local what = opts.what or "clothing"
+  -- (a button prompt by MOVE / CHANGE: Y / Triangle, C on the keyboard)
+  U.prompt = { pad = "Y", key = "C",
+    label = function() return (U.hidden and "Show " or "Hide ") .. what end,
+    run = function(c, pp)
+      if U.hidden then U.show(c, pp) else U.hide(c, pp) end
+    end }
+  U.hide(ctx, p)
+  function U.back(c)
+    local pp = G.player()
+    if pp ~= 0 then U.show(c, pp) end
+  end
+  return U
+end
+function F.page_tattoos(ctx, p)
+  local U = F.undress(ctx, p, STRIP_FOR_TATTOOS, { socks = true })   -- (no tank top: tattoos need the skin)
   local by, order = {}, {}
   for _, e in ipairs(CUSTOM.items.Tattoo or {}) do
     local area = e[7] ~= "" and e[7] or "Other"
@@ -4705,12 +5581,10 @@ function F.page_tattoos(ctx, p)
     rows[#rows + 1] = { label = shown, kind = "page", 
       open = function(c, pp) return F.page_items(c, pp, "Tattoo", by[area], "Tattoo " .. shown) end }
   end
-  return { title = "Tattoos", rows = rows,
+  return { title = "Tattoos", rows = rows, prompts = { U.prompt },
     back = function(c)
       F.wear_pending = nil
-      local pp = G.player()
-      if pp ~= 0 and lent then take_off(c, pp, lent) end
-      if pp ~= 0 and #outfit > 0 then restore(c, pp, dressed, outfit) end
+      U.back(c)
     end }
 end
 
@@ -4719,7 +5593,7 @@ end
 -- each, kept in saved_looks.txt: a "[look n]" / "[outfit n]" line, then
 -- "slider n value", "piece item|wear option|variant", "colour kind n".
 local PRESET_FILE = wml.mod_folder .. "/saved_looks.txt"
-local PRESET_MAX = 10
+local PRESET_MAX = 20
 local PRESET_CATS = {
   look = { "Hair", "Beard", "Mustache", "Sideburns", "Eyebrows", "Tattoo", "Eyes", "Skin" },
   outfit = { "Underwear" },
@@ -4741,7 +5615,9 @@ do
         local sn, sv = line:match("^slider (%d+) ([%d%.%-e]+)$")
         local item, mesh, variant = line:match("^piece ([^|]*)|([^|]*)|(.*)$")
         local ck, cn = line:match("^colour (%a+) (%d+)$")
-        if sn then cur.sliders[tonumber(sn)] = tonumber(sv)
+        if line:match('^body_gender ') then cur.body_gender=tonumber(line:match('^body_gender ([%d%.%-]+)$'))
+        elseif line:match('^voice ') then cur.voice=line:match('^voice ([%w_]+)')
+        elseif sn then cur.sliders[tonumber(sn)] = tonumber(sv)
         elseif item then cur.pieces[#cur.pieces + 1] = { item, mesh, variant }
         elseif ck then cur.colours[ck] = tonumber(cn) end
       end
@@ -4757,6 +5633,8 @@ local function save_presets()
       local pr = F.presets[kind][n]
       if pr then
         file:write(string.format("[%s %d]\n", kind, n))
+        if kind=='look' then file:write(string.format('body_gender %d\n',pr.body_gender or 0)) end
+        if kind=='look' and pr.voice then file:write('voice ', pr.voice, '\n') end
         for i = 1, #CUSTOM.sliders do
           if pr.sliders[i] then file:write(string.format("slider %d %.4f\n", i, pr.sliders[i])) end
         end
@@ -4783,6 +5661,8 @@ local function capture(ctx, p, kind)
     end
   end
   if kind == "look" then
+    pr.body_gender=F.body_gender.value
+    pr.voice=F.voice.want or 'own'   -- (the look keeps its voice)
     for n = 1, #CUSTOM.sliders do
       local v = F.slider_value(p, n)
       if v then pr.sliders[n] = v end
@@ -4797,7 +5677,8 @@ local function capture(ctx, p, kind)
   end
   return pr
 end
-local function apply_preset(ctx, p, kind, pr)
+-- (`preview`: only shown while you look, so the voice is left alone)
+local function apply_preset(ctx, p, kind, pr, preview)
   local record = record_of(p)
   if not record then return "Your look can't be changed right now" end
   local set = set_of(ctx, preset_entries(kind))
@@ -4816,18 +5697,42 @@ local function apply_preset(ctx, p, kind, pr)
   G.call(ctx, G.CLOTHING_FINISH, {})
   relayer(ctx, p, nil)
   for n, v in pairs(pr.sliders) do F.set_slider(p, n, v) end
+  if kind=='look' then
+    local ok,why=F.body_gender.set(ctx,p,pr.body_gender or 0)
+    if not ok then return why end
+    if pr.voice and not preview then F.set_voice(ctx, p, pr.voice ~= 'own' and pr.voice or nil, pr.voice == 'own') end
+  end
   for hk, c in pairs(pr.colours) do
     F.hair_colour[hk] = c
     put_colour(ctx, p, set_of(ctx, CUSTOM.items[hk] or {}), c)
   end
   return nil
 end
--- The page: Save Current, then the 10 slots (a saved one opens Load,
+-- The page: Save Current, then the 20 slots (a saved one opens Load,
 -- Overwrite and Delete; overwriting and deleting ask first).
 function F.page_presets(ctx, p, kind)
   local what = kind == "look" and "Preset" or "Outfit"
   local rows = {}
   local pg = { title = kind == "look" and "Saved Presets" or "Saved Outfits", rows = rows }
+  -- Preview: a saved one shows on you while the cursor is on it (or you
+  -- choose Load / Overwrite / Delete for it); anywhere else, and on leaving
+  -- without loading, your own look is back. `pg.own` is what you came in as.
+  pg.own = ctx and p and p ~= 0 and capture(ctx, p, kind) or nil
+  local function show(n)
+    if pg.shown == n then F.wear_pending = nil; return end
+    F.wear_pending = { at = F.tick + 12, fn = function(c, pp)
+      local want = n and F.presets[kind][n] or pg.own
+      if not want then return nil end
+      pg.shown = n
+      return apply_preset(c, pp, kind, want, true)
+    end }
+  end
+  pg.back = function(c)
+    F.wear_pending = nil
+    local pp = G.player()
+    if pg.shown and pg.own and pp ~= 0 then apply_preset(c, pp, kind, pg.own, true) end
+    pg.shown = nil
+  end
   local function confirm(title, yes)
     return function()
       return { title = title, rows = {
@@ -4837,23 +5742,27 @@ function F.page_presets(ctx, p, kind)
   end
   local build
   local function store(c, pp, n)
-    F.presets[kind][n] = capture(c, pp, kind)
+    -- (while one is previewed, what you came in as is what gets saved)
+    F.presets[kind][n] = pg.shown and pg.own or capture(c, pp, kind)
     save_presets(); build()
     return string.format("Saved to %s %d", what, n)
   end
   build = function()
     for k in pairs(rows) do rows[k] = nil end
-    rows[1] = { label = "Save Current", kind = "action", run = function(c, pp)
+    rows[1] = { label = "Save Current", kind = "action", hover = function() show(nil) end, run = function(c, pp)
       for n = 1, PRESET_MAX do if not F.presets[kind][n] then return store(c, pp, n) end end
       return string.format("No empty slots: all %d %ss are in use. Overwrite or delete one first.", PRESET_MAX, what:lower())
     end }
     rows[2] = { label = what .. "s", kind = "header" }
     for n = 1, PRESET_MAX do
       if F.presets[kind][n] then
-        rows[#rows + 1] = { label = string.format("%s %d", what, n), kind = "page", open = function()
+        rows[#rows + 1] = { label = string.format("%s %d", what, n), kind = "page", hover = function() show(n) end, open = function()
+          show(n)
           return { title = string.format("%s %d", what, n), rows = {
             { label = "Load", kind = "action", run = function(c, pp)
+                F.wear_pending = nil
                 local msg = apply_preset(c, pp, kind, F.presets[kind][n])
+                if not msg then pg.own, pg.shown = capture(c, pp, kind), nil end
                 return msg or string.format("%s %d loaded", what, n)
               end },
             { label = "Overwrite", kind = "page", open = confirm(string.format("Overwrite %s %d?", what, n), function(c, pp) return store(c, pp, n) end) },
@@ -4865,6 +5774,7 @@ function F.page_presets(ctx, p, kind)
         end }
       else
         rows[#rows + 1] = { label = string.format("%s %d", what, n), kind = "action", note = function() return "EMPTY" end,
+          hover = function() show(nil) end,
           run = function(c, pp) return store(c, pp, n) end }
       end
     end
@@ -4930,7 +5840,7 @@ local function apply_voice(ctx, name, sample)
 end
 function F.sample_voice(ctx, p, name)
   if not name or F.model.name then return end
-  apply_voice(ctx, name, true)
+  apply_voice(ctx, name, false)
   F.voice.sampling, F.voice.sample = true, name
 end
 -- The Voice page: None (your character's own sounds only), then every voice.
@@ -4959,6 +5869,7 @@ function F.page_voice(ctx, p)
     if Vo.want == name then cursor = #rows end
   end
   return { title = "Voice", rows = rows, cursor = cursor or 1,
+    prompts = { F.sample_prompt(function() if Vo.sampling then return Vo.sample or Vo.own end return Vo.want or Vo.own end) },
     dirty = function() return F.wear_pending ~= nil or (Vo.sampling and Vo.sample ~= Vo.want) end,
     accept = function(c)
       local pp = G.player()
@@ -5049,7 +5960,7 @@ function F.page_model_voice(ctx, p)
       local name = v[1]
       rows[#rows + 1] = { label = v[2], kind = "action", note = current(name),
         hover = function() F.wear_pending = { at = F.tick + 12, fn = function(c, pp)
-          apply_voice(c, name, true)
+          apply_voice(c, name, false)
           MV.sampling, MV.sample = true, name
         end } end,
         run = function(c, pp)
@@ -5062,6 +5973,7 @@ function F.page_model_voice(ctx, p)
     end
   end
   return { title = "Voice", rows = rows, cursor = cursor,
+    prompts = { F.sample_prompt(function() if MV.sampling then return MV.sample end return F.model_voice[model] end) },
     dirty = function() return F.wear_pending ~= nil or (MV.sampling and MV.sample ~= F.model_voice[model]) end,
     accept = function(c)
       local pp = G.player()
@@ -5113,7 +6025,84 @@ function F.update_voice(ctx, p, menu_open)
   end
   if Vo.want and not Vo.sampling and F.tick % 100 == 0 and persona_name(p) ~= Vo.want then apply_voice(ctx, Vo.want, false) end
 end
+-- Play Sample (the Voice pages): four lines in turn, in the voice under the cursor.
+local SAMPLE_LINES = { "combat - congratulate self", "threat - alert (group attack)", "taunt - fleeing enemy", "threat - damage received (firearm)" }
+F.SAMPLE_LINES = SAMPLE_LINES
+function F.sample_prompt(get)
+  local at = 0
+  return { pad = "X", key = "H", label = "Play Sample",
+    run = function(c, pp)
+      local name = get()
+      if name then apply_voice(c, name, false) end
+      at = at % #SAMPLE_LINES + 1
+      F.menu_line = true
+      G.script(c, string.format('audio_play_persona_line_do("#PLAYER#", "%s", -1)', SAMPLE_LINES[at]))
+      F.menu_line = nil
+      return nil
+    end }
+end
+F.apply_voice = apply_voice
 end)()
+
+-- Voice reactions (voice_react.lua): lines in your voice for what happens to
+-- you, as often as Character Dialogue says (Off: never).
+F.REACT = require("voice_react")
+F.REACT.enabled = function() return F.on("voice_reactions") and (F.items.line_rate and F.items.line_rate.v or 3) ~= 1 end
+F.REACT.rate = function() return ({ 0, 0.5, 1, 1.6 })[F.items.line_rate and F.items.line_rate.v or 3] or 1 end
+F.REACT.has_line = function(n) local p = G.player() return p ~= 0 and n ~= nil and F.has_voice_line(p, n) end
+-- People near you (the bump flag): every human object within r metres.
+function F.people_near(p, r)
+  local out, x, y, z = {}, G.vec(p + G.P.POS)
+  for i = 0, 4095 do
+    local o = read_u32(G.OBJECTS + 12 + i * 16)
+    if o ~= 0 and o ~= p and G.pointer_ok(o) and read_u32(o + 72) == 1 then
+      local ox, oy, oz = G.vec(o + G.P.POS)
+      if (ox - x) ^ 2 + (oy - y) ^ 2 + (oz - z) ^ 2 <= r * r then out[#out + 1] = { object = o, ragdoll = read_u32(o + 780) ~= 0 } end
+    end
+  end
+  return out
+end
+-- Dismissing homies, from the D-pad or the menu.
+G.hook(HOMIES.DISMISS_ALL, function(ctx)
+  local p = G.player()
+  local had = p ~= 0 and HOMIES.count(p) or 0
+  ctx:call_original()
+  if had > 0 then F.REACT.dismissed(F.say_reaction) end
+end)
+-- A grenade, pipe bomb or rocket from someone else landing near you, with homies along.
+local THROWN = { grenade = true, pipe_bomb = true, rpg_launcher = true, rpg_laser = true, molotov = true }
+G.on_projectile = function(owner, name, made)
+  local p = G.player()
+  if p == 0 or not THROWN[name] or owner == read_u32(p + 68) or read_u32(p + G.PARTY_COUNT) == 0 or not G.pointer_ok(made) then return end
+  local x, y, z = G.vec(p + G.P.POS)
+  local mx, my, mz = G.vec(made + 20)
+  if (mx - x) ^ 2 + (my - y) ^ 2 + (mz - z) ^ 2 < 25 * 25 then F.REACT.flag("grenade", F.say_reaction) end
+end
+-- A hit on you (TAKE_DAMAGE, from main.lua): by a vehicle, a gun or a fist.
+function F.react_hit(p, attacker)
+  local kind = "melee"
+  if G.pointer_ok(attacker) then
+    local t = read_u32(attacker + 72)
+    if t == 5 or (t == 1 and G.vehicle_object(attacker)) then kind = "vehicle"
+    elseif t == 1 then
+      local item = read_u32(attacker + G.P.EQUIPPED)
+      local ammo = G.pointer_ok(item) and read_u32(item + 16) or 0
+      local info = G.pointer_ok(ammo) and read_u32(ammo + 8) or 0
+      if G.pointer_ok(info) and read_u32(info + 100) == 0 then kind = "firearm" end
+    end
+  end
+  F.REACT.hit(kind, F.say_reaction)
+end
+F.REACT.sprinting = function(p) return read_u32(p + G.ANIM_STATE) == F.sprint_state end
+function F.say_reaction(line)
+  enqueue(string.format('audio_play_persona_line_do("#PLAYER#", "%s", -1)', line))
+end
+function F.update_reactions(ctx, p, menu_open)
+  if F.tick % 5 ~= 0 then return end
+  if not F.sprint_state then F.sprint_state = state_number_of(ctx, "sprint") end
+  local quiet = menu_open or G.in_cutscene() or G.screen_up()
+  F.REACT.update(p, F.say_reaction, quiet, F.people_near)
+end
 
 -- Made for a mix: the variation the game rolls is this copy.
 F.look_synth = nil
@@ -5642,7 +6631,20 @@ function F.update_model(ctx, p, vehicle)
       end
     end
     F.look_refresh(p)
-    if job.reload then return end_job(ctx, job, "Character reloaded", true) end
+    if job.reload then
+      if job.player == p and job.handle == read_u32(p + 68) then
+        F.forget_sets()
+        F.move.def=nil;F.move.dirty=true;F.move.refresh=true
+        F.apply_movement(ctx,p)
+        -- Rebind the weapon on the rebuilt animation owner, then resolve
+        -- its current native weapon-group state instead of a cached pose.
+        G.call(ctx,G.PLAYER_EQUIP,{p,0,0})
+        if G.pointer_ok(job.weapon) then G.call(ctx,G.PLAYER_EQUIP,{p,job.weapon,0}) end
+        G.call(ctx,G.ANIM_APPLY,{p,0xFFFFFFFF,0xFFFFFFFF,0})
+        F.update_expression(ctx,p,true)
+      end
+      return end_job(ctx, job, "Character animations and equipped weapon reloaded", true)
+    end
     return end_job(ctx, job, job.name and ("You're now " .. job.label .. F.variation_text(p)) or "You're yourself again", true)
   end
 end
@@ -6062,12 +7064,14 @@ function F.kill_everyone(ctx, p)
   local victims = {}
   for _ = 1, 300 do
     if not G.pointer_ok(h) then break end
-    if not spare[read_u32(h + 68)] and read_u32(h + G.P.TYPE) == 1 and read_f32(h + G.P.HEALTH) > 0 then victims[#victims + 1] = h end
+    -- story characters (SP_ voice personas: mission people like Julius, Lin, Troy) are never killed
+    local story = (cstring(read_u32(h + G.PERSONA_NOW), 24) or ""):find("^SP_") ~= nil
+    if not spare[read_u32(h + 68)] and not story and read_u32(h + G.P.TYPE) == 1 and read_f32(h + G.P.HEALTH) > 0 then victims[#victims + 1] = h end
     h = read_u32(h + G.HUMAN_NEXT)
     if h == read_u32(G.HUMAN_LIST) then break end
   end
   for _, v in ipairs(victims) do
-    G.call(ctx, G.TAKE_DAMAGE, { v, p, 0, 0, 0, 0, 0, 0 }, { -1.0 })
+    G.call(ctx, G.TAKE_DAMAGE, { v, 0, 0, 0, 0, 0, 0, 0 }, { -1.0 })   -- (no attacker: no notoriety for you)
     n = n + 1
   end
   return n > 0 and string.format("%d killed", n) or "Nobody around"
@@ -6510,6 +7514,7 @@ G.hook(G.ARROW_TINT, function(ctx)
   ctx:call_original()
 end)
 G.hook(G.DRAW_BITMAP, function(ctx)
+  if G.radial_bitmap_hidden and G.radial_bitmap_hidden() then return end
   local A = F.arrows
   if A.on and A.edge and not A.busy and (ctx:r(3) & MASK) == read_u32(G.ARROW_IMAGE) then
     local alpha = math.max(0, math.min(255, math.floor(A.edge)))
@@ -6942,15 +7947,31 @@ local ORDER = {
   Emotes = { "poses", "actions", "scene", "stop_pose", "clear_scene", "repeat_action", "repeat_every" },
   Weapons = { "infinite_ammo", "no_reload", "fire", "harder_hits", "one_hit", "rocket_ammo", "fire_ammo", "money_gun", "money_gun_cash", "explosive_punch", "punch_blast",
     "weapon_switch", "aim_style", "aim_camera_page", "fine_aim_zoom", "fine_aim_spread",
-    "give_weapon", "all_weapons", "ammo_all" },
+    "give_weapons", "remove_weapon", "give_weapon", "all_weapons", "ammo_all" },
   Vehicles = { "veh_god", "veh_repair", "tank", "bulletproof", "never_flat", "no_fling", "car_grip", "nitro_all",
     "spawn_vehicle", "remove_vehicles", "garage", "vehicle_custom", "paint", "paint2", "boom", "max_speed" },
-  World = { "weather", "hour", "freeze_clock", "clear", "restore_traffic", "drop", "kill_all", "everybody", "spawn_person",
+  World = { "weather", "hour", "sky_type", "freeze_clock", "clear", "restore_traffic", "drop", "kill_all", "everybody", "spawn_person",
     "crowd_small", "crowd_big", "remove_people", "cash_rain", "weapon_rain", "cash_drop_chance" },
   Visual = { "hide_hud", "letterbox", "free_cam", "cam_mode", "freeze_world", "filter", "render_mode", "saturation" },
-  Teleport = { "places", "tp_stores", "tp_activities", "waypoint_go", "waypoint_auto" },
+  Teleport = { "places", "tp_stores", "tp_activities", "tp_strongholds", "waypoint_go", "waypoint_auto" },
   Settings = { "master", "status", "settings_controls", "settings_ui_plus", "settings_unlocks", "settings_tweaks" },
 }
+-- Tab order: Player, Customize, Models, Visual, then the rest as made.
+do
+  local FIRST = { "Player", "Customize", "Models", "Visual" }
+  local front, rest = {}, {}
+  for _, name in ipairs(FIRST) do
+    for _, cat in ipairs(F.categories) do if cat.name == name then front[#front + 1] = cat end end
+  end
+  for _, cat in ipairs(F.categories) do
+    local first = false
+    for _, name in ipairs(FIRST) do if cat.name == name then first = true end end
+    if not first then rest[#rest + 1] = cat end
+  end
+  for i = #F.categories, 1, -1 do F.categories[i] = nil end
+  for _, cat in ipairs(front) do F.categories[#F.categories + 1] = cat end
+  for _, cat in ipairs(rest) do F.categories[#F.categories + 1] = cat end
+end
 -- Control preferences, set once, live in Settings rather than with the cheats.
 local MOVE_TO = { camera_turn = "Settings", aim_button = "Settings", precise_turning = "Settings",
   precise_aim_turn = "Settings", fine_aim_turn = "Settings", weapon_dpad = "Settings", weapon_tap = "Settings" }
@@ -7008,7 +8029,7 @@ do
     for _, it in ipairs(weapons.items) do
       if inside[it.id] then rows[#rows + 1] = it elseif fine[it.id] then fine_rows[#fine_rows + 1] = it else keep[#keep + 1] = it end
     end
-    local page = { id = "aim_camera_page", label = "Precise Aim camera", kind = "page", needs = "none", page_rows = rows,
+    local page = { id = "aim_camera_page", label = "Precise Aim camera", kind = "page", needs = "none",
       hidden = style_is(2),
       help = "Precise Aim's camera: its style (Saints Row 1 to 2022 or yours), zoom, field of view, height and shoulder.",
       open = function() return { title = "Precise Aim camera", rows = rows } end }

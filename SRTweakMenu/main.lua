@@ -21,7 +21,7 @@ local F = require("features")
 local JUICED = require("juiced")
 JUICED.setup(F)
 -- Rows after Saints Row (2006) forum mods (extras.lua) and weapon skins
--- (skins.lua), added the same way.
+-- (skins.lua), by 00xJS, added the same way.
 local EXTRAS = require("extras")
 EXTRAS.setup(F)
 local SKINS = require("skins")
@@ -43,6 +43,8 @@ MYPLACES.install(MENU)
 local WAYPOINT = require("waypoint")
 local HOMIES = require("homies")
 local FREECAM = require("freecam")
+require("tribal_hud").enabled = function() return F.on("tribal_hud") or (F.enabled and require("hud_settings").preview ~= nil) end
+require("tribal_hud").input = function() return not MENU.is_open() and FREECAM.pad or {} end
 local ADDONS = require("addons")
 
 local TELEPORT = 0x8243E6F8  -- (player, position*, 0, nav node or -1)
@@ -169,18 +171,27 @@ local function update_effects(p)
   local dt = fx.clock and math.max(0, math.min(0.1, now - fx.clock)) or 0
   fx.clock = now
   local show = p ~= 0 and not MENU.is_open() and not G.in_cutscene() and not G.screen_up() and read_f32(p + G.P.HEALTH) > 0
-  -- Low health: below half health, more the lower it gets; a slow heartbeat.
-  local target = 0
-  if show and F.items.low_health_fx and F.items.low_health_fx.v == true then
-    local max = read_u32(p + G.P.HEALTH_MAX)
-    local r = (max > 0 and max < 1000000) and read_f32(p + G.P.HEALTH) / max or 1
-    if r < 0.5 then target = (0.5 - r) / 0.5 end
+  local H=require('tribal_hud')
+  local health_ops={}
+  local target=0
+  local max=show and read_u32(p+G.P.HEALTH_MAX) or 0
+  local ratio=max>0 and max<1000000 and read_f32(p+G.P.HEALTH)/max or 1
+  local limit=H.health_threshold()
+  if show and F.items.low_health_fx and F.items.low_health_fx.v==true and ratio<=limit then
+    target=.35+.65*math.max(0,1-ratio/limit);fx.health_release=nil
+  elseif fx.health>0 then
+    local b=H.beat
+    local tail=b and b.player==p and now>=b.at and now-b.at<3 and b.audible_until or now
+    fx.health_release=fx.health_release or tail
+    if show and now<fx.health_release then target=fx.health end
   end
-  fx.health = ease(fx.health, target, dt)
-  if fx.health > 0.01 then
-    local beat = now * (0.9 + 1.2 * fx.health) * 2 * math.pi
-    local pulse = 0.8 + 0.2 * (0.5 + 0.5 * math.sin(beat))
-    vignette(list, { 120, 0, 0 }, fx.health * pulse, 190)
+  fx.health=ease(fx.health,target,dt)
+  if fx.health>.01 then
+    local beat=H.beat and H.beat.player==p and now>=H.beat.at and now-H.beat.at<3 and H.beat
+    local glow=H.glow({health=ratio,low_health=limit,time=now,health_glow=1,
+      health_recovering=ratio>limit,health_beat_age=beat and now-beat.at,
+      health_beat_period=beat and beat.period},'health')
+    vignette(health_ops,{120,0,0},fx.health*(.58+.42*glow.pulse),190)
   end
   -- Low sprint: from 40% left, darker as the meter empties (the meter the
   -- HUD shows, refill included).
@@ -194,6 +205,9 @@ local function update_effects(p)
   end
   fx.sprint = ease(fx.sprint, target, dt)
   if fx.sprint > 0.01 then vignette(list, { 0, 0, 0 }, fx.sprint, 200) end
+  -- Exhaustion below red; both are submitted before every native/custom
+  -- HUD element. Never draw either vignette in the foreground menu pass.
+  for _,op in ipairs(health_ops) do list[#list+1]=op end
   UI.overlay = #list > 0 and list or nil
 end
 F.fx = fx
@@ -266,7 +280,7 @@ G.hook(G.INPUT_GET_STATE, function(ctx)
   ADDONS.set_combo(MENU.combo_down(buttons)
     or (stop_press ~= 0 and (buttons & stop_hold) == stop_hold and (buttons & stop_press) ~= 0))
   local flying = FREECAM.capture(state)
-  local blank, hide = MENU.controller(buttons, read_u8(state + 6), read_u8(state + 7))
+  local blank, hide, replay = MENU.controller(buttons, read_u8(state + 6), read_u8(state + 7))
   if flying and not blank then
     -- The free camera has the pad: the game sees nothing pressed, and a new
     -- packet number so a stick held when it started doesn't keep walking.
@@ -291,9 +305,12 @@ G.hook(G.INPUT_GET_STATE, function(ctx)
     hide = hide | stop_press
   end
   stop_prev = buttons
-  if hide ~= 0 then
+  -- D-pad taunts (multiplayer style) and the Multiplayer Pimp Slap's LT.
+  local mine = F.pad_take and F.pad_take(buttons, read_u8(state + 6)) or 0
+  if mine ~= 0 then hide = hide | mine end
+  if hide ~= 0 or (replay or 0) ~= 0 then
     -- The menu combo's D-pad press, or buttons still held from the menu.
-    write_u16(state + 4, (buttons & ~hide) & 0xFFFF)
+    write_u16(state + 4, ((buttons & ~hide) | (replay or 0)) & 0xFFFF)
     write_u32(state, read_u32(state) + 1)
     if (hide & MENU.PAD.LT) ~= 0 then write_u8(state + 6, 0) end
     if (hide & MENU.PAD.RT) ~= 0 then write_u8(state + 7, 0) end
@@ -335,7 +352,12 @@ G.hook(G.TAKE_DAMAGE, function(ctx)
   if F.on("god") and not F.killing_self and (ctx:r(3) & 0xFFFFFFFF) == read_u32(G.PLAYER) then
     ctx:set_f(1, 0.0)                           -- no damage to you at all
   end
+  require("tribal_hud").note_impact(ctx:r(3)&0xFFFFFFFF,ctx:r(4)&0xFFFFFFFF,ctx:f(1))
   F.note_hit(ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF)
+  if p0 ~= 0 and (ctx:r(4) & 0xFFFFFFFF) == p0 and (ctx:r(3) & 0xFFFFFFFF) ~= p0 and F.REACT then F.REACT.note_damage(ctx:r(3) & 0xFFFFFFFF) end
+  if p0~=0 and ctx:f(1)~=0 and ((ctx:r(3)&0xFFFFFFFF)==p0 or (ctx:r(4)&0xFFFFFFFF)==p0) then
+    require("tribal_hud").note_combat(p0)
+  end
   if F.on("one_hit") then
     local victim, attacker = ctx:r(3) & 0xFFFFFFFF, ctx:r(4) & 0xFFFFFFFF
     local p = read_u32(G.PLAYER)
@@ -363,6 +385,11 @@ G.hook(G.TAKE_DAMAGE, function(ctx)
     -- A hit that did nothing with the damage factor at 0: put it back now.
     if read_f32(p0 + G.P.DAMAGE_FACTOR) < 0.01 and not next(F.shields) then F.restore_damage(p0, "a hit did nothing") end
   end
+  -- Voice reactions: a hit on you; someone dying (so a smaller party isn't a dismissal).
+  if p0 ~= 0 and victim == p0 and health_was and read_f32(p0 + G.P.HEALTH) < health_was and read_f32(p0 + G.P.HEALTH) > 0 then
+    pcall(F.react_hit, p0, attacker)
+  end
+  if G.pointer_ok(victim) and victim ~= p0 and read_u32(victim + 72) == 1 and read_f32(victim + G.P.HEALTH) <= 0 then F.REACT.death_at = os.clock() end
   -- A kill by you: the line the character you're playing as says.
   if alive and read_f32(victim + G.P.HEALTH) <= 0 then F.character_line("combat - congratulate self", 250) end
   if alive then F.saints_hit(ctx, p0, victim, read_f32(victim + G.P.HEALTH) <= 0) end
@@ -414,6 +441,9 @@ G.hook(G.UPDATE, function(ctx)
   MENU.input(ctx, tick)
   F.set_menu_open(MENU.is_open())
   F.update(ctx)
+  if not MENU.is_open() then require("hud_settings").preview = nil end  -- (a HUD preview ends with the menu)
+  require("tribal_hud").tick()
+  require("hud_layout").preview(MENU.current(),F.on('tribal_hud'))
   JUICED.after(ctx)
   EXTRAS.after(ctx)
   SKINS.after(ctx)
@@ -431,13 +461,17 @@ G.hook(G.UPDATE, function(ctx)
     F.items.weapon_dpad.v == 2, F.items.weapon_tap.v == 2)
   -- The fitting room: the Customize tab open (a T-pose and the camera in
   -- front of you, you on the right of the screen), off as soon as it isn't.
+  -- The Emotes tab gets the same camera, without the T-pose, to watch them.
   do
     local p = G.player()
     local tab = MENU.is_open() and MENU.tab_name()
     -- (the Customize Vehicle page: the camera round your car)
     local car = tab == "Vehicles" and MENU.pages[1] and MENU.pages[1].vehicle
     if car and not G.pointer_ok(car) then car = nil end
-    local viewing = p ~= 0 and (tab == "Customize" or car) and not FREECAM.on and G.playing(p) and read_f32(p + G.P.HEALTH) > 0
+    -- (on Emotes, the camera round you when you came to the tab standing
+    -- still, or while an emote plays; came moving, the game's camera follows you)
+    local emotes_view = tab == "Emotes" and (not MENU.emote_free or MENU.emote_playing())
+    local viewing = p ~= 0 and (tab == "Customize" or emotes_view or car) and not FREECAM.on and G.playing(p) and read_f32(p + G.P.HEALTH) > 0
     -- (on a movement row in Customize: a walk-in-place preview, not the T-pose)
     local row = viewing and tab == "Customize" and MENU.current()
     local previewing = row and row.part and F.model.name == nil
@@ -458,6 +492,7 @@ G.hook(G.UPDATE, function(ctx)
       F.end_preview_move(ctx, p)
     end
     F.set_fitting(p, viewing and tab == "Customize" and not previewing)
+    F.unarm_for_customize(ctx, p, viewing and tab == "Customize" and F.model.name == nil)
     FREECAM.orbit(ctx, viewing and true or false, viewing and F.facing_yaw(car or p) or 0,
       car and { target = car, dist = 7.0, height = 0.6, min = 3.0, max = 14.0 } or nil)
   end

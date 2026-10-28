@@ -23,6 +23,7 @@ local F, forget_saved
 local CHOICE_DEFAULTS = {
   weather = 1, filter = 1, render_mode = 1, cam_mode = 1, aim_style = 1, aim_button = 1, precise_turning = 1,
   weapon_dpad = 1, weapon_tap = 1, punch_blast = 2, line_rate = 3, missing_moves = 1, loose_parts = 2, look_pose = 1,
+  sky_type = 1, work_boots = 1,
 }
 -- Numbers that only say how much of something to do now, not a setting.
 local NOT_SETTINGS = { give_item_count = true, menu_background = true }
@@ -99,11 +100,11 @@ local function restore(ctx, target)
   return n
 end
 
-local function confirm(title, yes)
+local function confirm(title, question, yes)
   return function()
     local pg
     pg = { title = title, rows = {
-      { id = "defaults_yes", label = "Yes", kind = "action", needs = "none", run = function(ctx) pg.close_after = 1; return yes(ctx) end },
+      { id = "defaults_yes", label = "Yes", kind = "action", needs = "none", help = question, run = function(ctx) pg.close_after = 1; return yes(ctx) end },
       { id = "defaults_no", label = "No", kind = "action", needs = "none", run = function() pg.close_after = 1 end } } }
     return pg
   end
@@ -134,7 +135,7 @@ local function changed_page()
   else
     rows[#rows + 1] = { id = "defaults_all_back", label = "Put all of these back to the game's own", kind = "page", needs = "none",
       help = "Every switch below off and every value back to the game's own.",
-      open = confirm("Put all " .. #list .. " back to the game's own?", back_to_game) }
+      open = confirm("Put All Back", "Put all " .. #list .. " back to the game's own?", back_to_game) }
     local at = nil
     for _, e in ipairs(list) do
       if e.at ~= at then
@@ -162,14 +163,14 @@ function D.setup(features, forget)
   F.add_rows("Settings", "forget_tweaks", {
     { id = "restore_menu", label = "Restore menu defaults", kind = "page", needs = "none",
       help = "Every row back to how the menu starts (mod.ini), and the saved tweaks forgotten.",
-      open = confirm("Back to the menu's defaults, and forget saved tweaks?", function(ctx)
+      open = confirm("Restore Menu Defaults", "Back to the menu's defaults, and forget saved tweaks?", function(ctx)
         local n = restore(ctx, "menu")
         local msg = forget_saved and forget_saved() or ""
         return string.format("%d setting%s back to the menu's defaults. %s", n, n == 1 and "" or "s", msg)
       end) },
     { id = "restore_game", label = "Restore game defaults", kind = "page", needs = "none",
       help = "Every switch off and every value the game's own: the game as it is without the menu.",
-      open = confirm("Everything back to the game's own?", back_to_game) },
+      open = confirm("Restore Game Defaults", "Everything back to the game's own?", back_to_game) },
   })
 end
 

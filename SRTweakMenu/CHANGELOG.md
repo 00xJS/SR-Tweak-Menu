@@ -1,5 +1,57 @@
 # SR Tweak Menu - changes
 
+## 2.7.0 - itsMJQ's 1.9.12 to 2.6.6 merged in
+
+Everything itsMJQ added since 1.9.11, put into this menu's own layout. The
+tabs, their order and your defaults stay as they were; every new feature
+starts off and has its own switch, and Save tweaks for next time keeps it.
+
+- **HUD styles** (Settings > UI+ > HUD options): itsMJQ's reactive HUD in the
+  Default+ or Saints Row '22 design, with HUD motion, impact reactions per
+  weapon, the death fade, and homie and money placement (its own settings
+  file, hud_preferences.txt, as you change them).
+- Customize: **Body type** (Face & Body > Body), **Randomize** (X / R) on every
+  page of Face & Body and on Clothes, Hide/Show clothing while you edit
+  (Y / C), 20 saved looks and outfits (a look keeps its voice), and the 26
+  imported Saints Row 2 facial expressions under Facial expressions.
+- Customize > **Reactions and physics**: Reactive expressions, Voice reactions,
+  Mouth moves when you talk, Breast physics. All off at start.
+- Customize > **Clothing mods**: Playa Choice clothing (CommyGT), Work boots
+  (own shoe or in place of the Hiking Boots) and Saints Row 2 hair. They go
+  in while the game starts, so they work from the next start, like Skip
+  intro. All off at start.
+- Player > **Items** (food and drugs, one or all). Weapons: **Give weapons**
+  (a page, one or all), **Remove weapon**, **Multiplayer Pimp Slap** (off at
+  start). Give weapon, Give item and Give every weapon stay as they were.
+- Emotes > D-pad taunts: a fourth choice, **Multiplayer style** (itsMJQ's:
+  down, left and right, with voice lines, standing still).
+- World: **Sky** (one part of the day's sky, whatever the time); Clear
+  streets keeps them empty until Restore streets; Kill everyone spares story
+  characters and gives no notoriety; Districts: **Your story progress**, and
+  Hand it over no longer crashes for a whole district or the city.
+- Visual: Render mode **Pitch Black** (only you), **Draw distance**, **Bloom**;
+  Letterbox stays through cutscenes.
+- Teleport > **Strongholds**.
+- Settings > **Hold Back/Select opens the menu**: a third way to open it, off
+  at start (F5 and RB + D-pad Down as before).
+- The menu opens where you closed it; long titles and button hints shrink
+  to fit the game style box; the game style menu retries after a drawing
+  problem instead of staying on plain text.
+- Movement: heavy guns keep the game's walk, run and sprint for styles
+  that don't carry them; no idle fidgets in the preview; the style showing
+  on the row is the one you keep.
+- Fixed **Nitrous in every vehicle** applying when off (reported on a fresh
+  save in a cop car). Every car was given nitrous at start whatever the
+  switch said, and switching it off only cancelled the boost after each
+  update, too late: the push still ran and the flames stayed. Now cars are
+  only given nitrous when the game starts with the switch on, and switched
+  off it's refused where the game turns nitrous on. Switching it on takes
+  effect from the next start, like Skip intro; off stops it at once.
+- Not brought in: the 4K pause map (unverified, and it broke loading
+  before), the SR2 hair and facial import test builds, the MP3 player
+  rebuild (fixed in Saints Reborn itself), and itsMJQ's tab order, Menu UI
+  row and Title Case names.
+
 ## 2.6.4
 
 - **Save tweaks for next time** saves every setting now, the same ones

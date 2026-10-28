@@ -30,9 +30,9 @@ local TABS = {
       { "unlock_music", "unlock_collectibles", "unlock_clothing", "unlock_mp_clothing", "unlock_reward_clothing",
         "rewards_header", "reward_free_shopping", "reward_bulletproof", "reward_blastproof", "reward_crashproof",
         "reward_police_forget", "reward_gangs_forget" }),
-    "money", "respect" } },
+    "items", "money", "respect" } },
   { "Weapons", {
-    "infinite_ammo", "no_reload", "fire", "one_hit", "harder_hits", "perfect_aim", "no_melee_lock", "car_reload",
+    "infinite_ammo", "no_reload", "fire", "one_hit", "harder_hits", "perfect_aim", "no_melee_lock", "car_reload", "mp_pimp_slap",
     page("weapons_special", "Special ammo", "Rocket and fire ammo, the money gun and explosive punches.",
       { "rocket_ammo", "fire_ammo", "money_gun", "money_gun_cash", "explosive_punch", "punch_blast" }),
     page("weapons_aiming", "Aiming & switching", "Aim style (Precise Aim, Fine Aim) and its camera, the aim button, turning while aiming, and weapon switch.",
@@ -42,7 +42,7 @@ local TABS = {
       { "skin_k6_krukov", "skin_vice_9", "skin_nr4", "skin_ar40_xtnd", "skin_skr7_spree", "skin_44_shepherd", "skin_tombstone",
         "skin_12_gauge", "skin_as12_riot", "skin_mcmanus", "skin_rpg", "skin_platinum_rpg", "skin_nightstick", "skin_crowbar",
         "skin_knife", "skin_baseball_bat", "skin_pimp_slap", "skin_pcp", "skins_reset" }),
-    "give_weapon", "give_item", "give_item_count", "all_weapons", "ammo_all" } },
+    "give_weapon", "give_weapons", "remove_weapon", "give_item", "give_item_count", "all_weapons", "ammo_all" } },
   { "Vehicles", {
     "veh_god", "veh_repair",
     page("vehicles_toughness", "Toughness", "Tank mode, bulletproof glass and tires, no explosion fling.",
@@ -55,7 +55,7 @@ local TABS = {
       { "car_free_cam", "car_cam_reset", "car_cam_reset_stopped", "car_cam_follow", "car_cam_nose", "driveby_cam", "no_entry_swing", "speed_fov" }),
     "spawn_vehicle", "remove_vehicles", "garage", "boom" } },
   { "World", {
-    "weather", "no_fog", "hour", "freeze_clock", "clear", "restore_traffic", "stores_24_7",
+    "weather", "sky_type", "no_fog", "hour", "freeze_clock", "clear", "restore_traffic", "stores_24_7",
     page("world_people", "People", "Spawn people and crowds, what everybody does, and how gangs and police come at you.",
       { "spawn_person", "crowd_small", "crowd_big", "remove_people", "everybody", "drop", "kill_all", "gang_civ_cars", "no_guns" }),
     page("world_drops", "Drops", "Cash and weapons around you, money rain, and how often the dead drop cash.",
@@ -63,7 +63,7 @@ local TABS = {
     page("world_districts", "Districts", "Who owns each part of Stilwater, and the whole map explored.",
       { "district", "district_owner", "district_apply", "explore_map" }) } },
   { "Visual", {
-    "hide_hud", "map_arrow", "letterbox", "filter", "render_mode", "saturation",
+    "hide_hud", "map_arrow", "letterbox", "filter", "render_mode", "draw_distance", "bloom", "saturation",
     page("visual_camera", "Camera", "Field of view, the over-the-shoulder camera, first person and its field of view, and camera turn speed.",
       { "fov", "shoulder_cam", "shoulder_side", "shoulder_closer", "first_person", "fp_fov", "camera_turn" }),
     page("visual_free_camera", "Free camera", "Fly the camera or leave it on a shot, and freeze the world.",
@@ -71,7 +71,11 @@ local TABS = {
     "settings_ui_plus" } },
   { "Teleport", { keep = true } },
   { "Models", { keep = true, add = { "missing_moves", "loose_parts" } } },
-  { "Customize", { keep = true, add = { "outfit_back", "look_pose" } } },
+  { "Customize", { keep = true, add = { "outfit_back", "look_pose",
+    page("customize_character", "Reactions and physics", "itsMJQ's reactive expressions, voice reactions, talking mouth and breast physics.",
+      { "face_react", "voice_reactions", "talking_mouth", "breast_physics" }),
+    page("customize_clothing_mods", "Clothing mods", "Playa Choice, the work boots and Saints Row 2 hair, put in while the game starts.",
+      { "playa_choice", "work_boots", "sr2_hair" }) } } },
   { "Emotes", { "poses", "actions", "player_voice_lines", "scene", "stop_pose", "clear_scene", "repeat_action", "repeat_every",
     "dpad_taunts" } },
   { "Settings", {
@@ -113,6 +117,20 @@ function L.apply(F)
     return it
   end
 
+  -- A page; its rows may be pages too.
+  local function make_page(e)
+    local rows = {}
+    for _, r in ipairs(e.rows) do
+      local it = type(r) == "string" and take(r) or make_page(r)
+      if it then rows[#rows + 1] = it end
+    end
+    local pg = { id = e.page, label = e.label, kind = "page", needs = "none", help = e.help, page_rows = rows,
+      open = function() return { title = e.label, rows = rows } end }
+    F.items[e.page] = pg
+    placed[e.page] = true
+    return pg
+  end
+
   for _, t in ipairs(TABS) do
     local name, spec = t[1], t[2]
     local cat = by_name[name]
@@ -123,8 +141,8 @@ function L.apply(F)
           if it.id then placed[it.id] = true end
           items[#items + 1] = it
         end
-        for _, id in ipairs(spec.add or {}) do
-          local it = take(id)
+        for _, e in ipairs(spec.add or {}) do
+          local it = type(e) == "string" and take(e) or make_page(e)
           if it then items[#items + 1] = it end
         end
       else
@@ -133,16 +151,7 @@ function L.apply(F)
             local it = take(e)
             if it then items[#items + 1] = it end
           else
-            local rows = {}
-            for _, id in ipairs(e.rows) do
-              local it = take(id)
-              if it then rows[#rows + 1] = it end
-            end
-            local pg = { id = e.page, label = e.label, kind = "page", needs = "none", help = e.help, page_rows = rows,
-              open = function() return { title = e.label, rows = rows } end }
-            F.items[e.page] = pg
-            placed[e.page] = true
-            items[#items + 1] = pg
+            items[#items + 1] = make_page(e)
           end
         end
       end

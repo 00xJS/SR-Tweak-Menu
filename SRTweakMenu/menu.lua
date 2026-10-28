@@ -23,11 +23,12 @@
 local G = require("game")
 local F = require("features")
 local S = wml.setting
--- Two looks (Settings > Menu look, menu_style in mod.ini): the plain overlay
+-- Two looks (Settings > Menu UI, menu_style in mod.ini): the plain overlay
 -- text, silent, or itsMJQ's game look - the menu drawn with the game's own
 -- interface (gameui.lua: its fonts, menu pictures and sounds).
 local GAMEUI = require("gameui")
 local style_game = tostring(S("menu_style", "text")):lower() == "game"
+local retry_at = 0
 local UI = setmetatable({ sound = function(ctx, name) if style_game then GAMEUI.sound(ctx, name) end end }, { __index = GAMEUI })
 
 local M = { open = false, tab = 1, cursor = {}, scroll = {}, status = "", status_until = 0, dll = false, pad = 0 }
@@ -45,7 +46,7 @@ local KEY = {
 -- Taken while open: the menu's own keys, and every key Saints Reborn maps
 -- onto the pad on foot or in a car (kbm.cpp), so they read as keys only.
 local TAKEN = { "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "BACKSPACE",
-  "W", "A", "S", "D", "Q", "E", "R", "F", "C", "V", "X", "Z", "SPACE", "SHIFT", "CTRL", "TAB" }
+  "W", "A", "S", "D", "Q", "E", "R", "F", "C", "V", "X", "Z", "H", "SPACE", "SHIFT", "CTRL", "TAB" }
 -- XINPUT_GAMEPAD bits; LT and RT are analog and get bits of their own.
 local PAD = { UP = 0x1, DOWN = 0x2, LEFT = 0x4, RIGHT = 0x8, START = 0x10, BACK = 0x20, LS = 0x40, RS = 0x80,
   LB = 0x100, RB = 0x200, A = 0x1000, B = 0x2000, X = 0x4000, Y = 0x8000, LT = 0x10000, RT = 0x20000 }
@@ -88,8 +89,11 @@ do
 end
 M.combo_text = combo_text
 M.parse_combo = parse_combo
+local HOLD = require("hold_button")
+local back_hold = HOLD.new(math.max(0.3, tonumber(S("menu_hold_seconds", 0.8)) or 0.8))
 function M.reset_controller()
-  M.pad = 0
+  M.pad, M.hold_toggle = 0, false
+  back_hold.started, back_hold.fired, back_hold.tap, back_hold.blocked = nil, nil, nil, true
 end
 
 for i = 1, #F.categories do M.cursor[i] = 1; M.scroll[i] = 1 end
@@ -230,6 +234,38 @@ local function check_dll()
 end
 
 -- ------------------------------------------------------------- open/close
+-- Closing remembers the pages you were on (by the rows that opened them) and
+-- opening goes back to them, each with its cursor, as long as they still open.
+local function remember_pages()
+  local path = {}
+  for _, pg in ipairs(M.pages) do
+    if pg.confirm or not pg.from then break end
+    path[#path + 1] = { from = pg.from, cursor = pg.cursor, scroll = pg.scroll }
+  end
+  M.resume = { tab = M.tab, path = path }
+end
+local function restore_pages(ctx)
+  local r = M.resume
+  M.resume = nil
+  if not r or r.tab ~= M.tab or #M.pages > 0 then return end
+  local p = G.player()
+  if p == 0 then return end
+  for _, step in ipairs(r.path) do
+    local it
+    for _, row in ipairs((view_rows())) do
+      if row.kind == "page" and (row.id or row.label) == step.from then it = row break end
+    end
+    if not it then return end
+    local ok, pg = pcall(it.open, ctx, p, it)
+    if not ok or type(pg) ~= "table" then return end
+    pg.from = step.from
+    push_page(pg)
+    local n = #(view_rows())
+    pg.cursor = math.max(1, math.min(step.cursor or 1, math.max(1, n)))
+    pg.scroll = math.max(1, math.min(step.scroll or 1, pg.cursor))
+  end
+end
+M.remember_pages, M.restore_pages = remember_pages, restore_pages
 local function set_open(open, how)
   if open == M.open then return end
   M.open = open
@@ -239,9 +275,11 @@ local function set_open(open, how)
   UI.sound(M.ctx, open and "pause" or (how == "back" and "back" or "resume"))
   if open then
     check_dll()
+    restore_pages(M.ctx)
     M.refresh_now = true
     say(M.dll and "" or "Menu open (no overlay): " .. current_item().label)
   else
+    remember_pages()
     leave_pages(M.ctx, "close")
     last_text = nil
     if M.dll then mailbox_write("") end
@@ -315,6 +353,8 @@ function slide(ctx, it, dir)  -- (the local declared above)
   if wml.key_down(KEY.fast) then speed = speed * 2 end
   local step = held == 0 and (it.step or 1) or speed * dt
   local nv = math.max(it.min, math.min(it.max, it.v + dir * step))
+  -- (wrap rows, e.g. Time of Day: a press past the end starts over: 23 -> 0, 0 -> 23)
+  if it.wrap and held == 0 and nv == it.v then nv = dir > 0 and it.min or it.max end
   if nv == it.v then return end
   it.v = nv
   local p = G.player()
@@ -336,9 +376,9 @@ function M.failed(msg)
   return false
 end
 
-local function activate(ctx)
+local function activate(ctx, row)
   -- Lists act on the entry shown on the row (picked with Left/Right).
-  local it = current_item()
+  local it = row or current_item()
   if it.kind == "header" then return end
   if it.kind == "page" then
     local p = G.player()
@@ -347,6 +387,7 @@ local function activate(ctx)
     if not ok then wml.log("page " .. tostring(it.id or it.label) .. ": " .. tostring(pg)); UI.sound(ctx, "error"); say("Error, see wml.log") return end
     if type(pg) == "string" then UI.sound(ctx, "error"); say(pg) return end
     UI.sound(ctx, "select")
+    pg.from = it.id or it.label
     push_page(pg)
     return
   end
@@ -418,6 +459,8 @@ local function pad_hit(bit)
 end
 
 local DEVICE_KEYS = { "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "BACKSPACE", "PAGEUP", "PAGEDOWN" }
+local function prompt_label(pr) return (type(pr.label) == "function" and pr.label() or pr.label):upper() end
+M.prompt_label = prompt_label
 local function track_device()
   if KEY.open ~= "" and wml.key_down(KEY.open) then device = "keys" return end
   for _, k in ipairs(DEVICE_KEYS) do
@@ -441,6 +484,10 @@ function M.input(ctx, tick)
   track_taps()
   track_device()
   -- Open / close.
+  if M.hold_toggle then
+    M.hold_toggle = false
+    set_open(not M.open)
+  end
   if KEY.open ~= "" and wml.key_pressed(KEY.open) then set_open(not M.open) end
   if combo_press ~= 0 and (M.pad & combo_hold) == combo_hold and (M.pad & combo_press) ~= 0 and (pad_prev & combo_press) == 0 then
     set_open(not M.open)
@@ -463,6 +510,20 @@ function M.input(ctx, tick)
         if repeating("right", r) then adjust(ctx, 1) end
       end
       if wml.key_pressed(KEY.enter) or pad_hit(PAD.A) then activate(ctx) end
+      -- A page's button prompts (pg.prompts: { pad = "X", key = "R",
+      -- label = "RANDOMIZE" or a function, run = function(ctx, p) }), shown
+      -- next to MOVE / CHANGE.
+      local pg = page()
+      for _, pr in ipairs(pg and pg.prompts or {}) do
+        if (pr.key and wml.key_pressed(pr.key)) or (pr.pad and pad_hit(PAD[pr.pad])) then
+          local p = G.player()
+          if p == 0 then UI.sound(ctx, "error") break end
+          local ok, msg = pcall(pr.run, ctx, p)
+          if not ok then wml.log("prompt: " .. tostring(msg)); UI.sound(ctx, "error")
+          else UI.sound(ctx, "select"); if type(msg) == "string" then say(msg) end end
+          break
+        end
+      end
       if wml.key_pressed(KEY.prev) or pad_hit(PAD.LB) then switch_tab(-1) end
       if wml.key_pressed(KEY.next) or pad_hit(PAD.RB) then switch_tab(1) end
     end
@@ -487,18 +548,37 @@ end
 local NAV_MASK = PAD.UP | PAD.DOWN | PAD.LEFT | PAD.RIGHT | PAD.A | PAD.B | PAD.LB | PAD.RB | PAD.START | PAD.BACK
 local MENU_KEYS = { UP = true, DOWN = true, LEFT = true, RIGHT = true, ENTER = true, BACKSPACE = true }
 M.free_move = false
+-- Emotes: moving when you go to the tab, you keep moving (the game's camera
+-- follows you); standing still, the camera goes round you and the stick turns
+-- it. Either way you're held while an emote plays.
+M.emote_free = false
+local moving, last_pos, emote_tab = 0, nil, false
+function M.emote_playing() return (F.posing or F.looping or F.repeating) ~= nil end
+local function track_moving()
+  local p = G.player()
+  if p == 0 then moving, last_pos = 0, nil return end
+  local x, _, z = G.vec(p + G.P.POS)
+  local moved = last_pos and ((x - last_pos[1]) ^ 2 + (z - last_pos[2]) ^ 2) > 0.0004
+  last_pos = { x, z }
+  moving = moved and 10 or math.max(0, moving - 1)
+end
 local function free_move_now()
   if not M.open or not block_input then return false end
   local tab = F.categories[M.tab].name
   if tab == "Customize" then return false end
   local pg = M.pages[1]
   if pg and pg.vehicle then return false end
+  if tab == "Emotes" then return M.emote_free and not M.emote_playing() end
   -- (a page you type on, like renaming a saved place: the keys are the page's)
   local top = M.pages[#M.pages]
   if top and top.typing then return false end
   return true
 end
 local function update_free_move()
+  track_moving()
+  local on_emotes = M.open and F.categories[M.tab].name == "Emotes"
+  if on_emotes and not emote_tab then M.emote_free = moving > 0 end
+  emote_tab = on_emotes
   local want = free_move_now()
   if want == M.free_move then return end
   M.free_move = want
@@ -511,6 +591,14 @@ M.update_free_move = update_free_move
 function M.controller(buttons, lt, rt)
   local pad = buttons | ((lt or 0) >= TRIGGER_PRESSED and PAD.LT or 0) | ((rt or 0) >= TRIGGER_PRESSED and PAD.RT or 0)
   M.pad = pad
+  local replay, held_back = 0, false
+  -- (Settings > Hold Back/Select opens the menu; off unless switched on)
+  if F.items.menu_hold_back and F.items.menu_hold_back.v == true then
+    local toggle, tap, hide = HOLD.update(back_hold, (pad & PAD.BACK) ~= 0, os.clock(),
+      M.open or G.playing(G.player()), M.open)
+    if toggle then M.hold_toggle = true end
+    replay, held_back = tap and PAD.BACK or 0, hide
+  end
   if M.open and block_input and M.free_move then
     swallow = (swallow & pad) | (pad & NAV_MASK)   -- (still hidden once it closes, until let go)
     return false, swallow
@@ -521,7 +609,8 @@ function M.controller(buttons, lt, rt)
   end
   swallow = swallow & pad
   if combo_press ~= 0 and (pad & combo_hold) == combo_hold then swallow = swallow | (pad & combo_press) end
-  return false, swallow
+  if held_back then swallow = swallow | PAD.BACK end
+  return false, swallow, replay
 end
 
 -- ------------------------------------------------------------- drawing
@@ -534,20 +623,32 @@ end
 -- HELP_WIDTH characters a line; a sentence longer than that breaks at a
 -- space.
 local HELP_WIDTH = 90
+local function help_text(value)
+  if type(value)=="table" then
+    local lines={}
+    for _,v in ipairs(value) do if type(v)=="string" or type(v)=="number" then lines[#lines+1]=tostring(v) end end
+    return table.concat(lines," ")
+  end
+  return (type(value)=="string" or type(value)=="number") and tostring(value) or ""
+end
 local STATUS_LINES = 4
-local function wrap_help(text)
+-- `fits(line)` (optional) measures a line on screen instead of counting
+-- characters, so the game-look box never cuts a line off.
+local function wrap_help(text, fits)
+  text=help_text(text)
+  fits = fits or function(l) return #l <= HELP_WIDTH end
   local out, line = {}, ""
   local function flush() if line ~= "" then out[#out + 1] = line; line = "" end end
   for sentence in (text:gsub("([%.!?])%s+", "%1\n") .. "\n"):gmatch("(.-)\n") do
     if sentence ~= "" then
-      if #sentence > HELP_WIDTH then
+      if not fits(sentence) then
         flush()
         for word in sentence:gmatch("%S+") do
-          if line ~= "" and #line + 1 + #word > HELP_WIDTH then flush() end
+          if line ~= "" and not fits(line .. " " .. word) then flush() end
           line = line == "" and word or (line .. " " .. word)
         end
         flush()
-      elseif line ~= "" and #line + 1 + #sentence > HELP_WIDTH then
+      elseif line ~= "" and not fits(line .. " " .. sentence) then
         flush()
         line = sentence
       else
@@ -588,10 +689,10 @@ local function fit(ctx, font, size, text, room)
 end
 
 function M.build_frame(ctx)
-  local fr = {}
   -- (Settings > Menu background sets how solid the boxes are: 60% is their own look)
   local bg = F.items.menu_background and F.items.menu_background.v or 60
   local function box_alpha(base) return math.min(255, math.floor(base * bg / 60 + 0.5)) end
+  local fr = {}
   local function quad(image, x, y, w, h, colour, extra)
     local op = { image = image, x = x, y = y, w = w, h = h, colour = colour }
     if extra then for k, v in pairs(extra) do op[k] = v end end
@@ -647,8 +748,11 @@ function M.build_frame(ctx)
   quad("ui_menu_ornate_0", cx - orn_w / 2, y + box_h - orn_h + 14 * K, orn_w, orn_h, nil, { flip_v = true })
   local box = (cat.title or cat.name):upper()   -- (the box can name the tab's contents: CHARACTER in Customize)
   local title = page() and page().title:upper() or (F.enabled and box or (box .. " (ALL OFF)"))
-  local tw = UI.width(ctx, "giant", title) * heading
-  text("giant", heading, title, cx - tw / 2, y + 12 * K, GOLD)
+  -- (a long page title shrinks to fit the box instead of running past it)
+  local hsize = heading
+  local tw = UI.width(ctx, "giant", title) * hsize
+  if tw > w - 40 * K then hsize = hsize * (w - 40 * K) / tw; tw = w - 40 * K end
+  text("giant", hsize, title, cx - tw / 2, y + 12 * K + (heading - hsize) * UI.line_height("giant") / 2, GOLD)
   quad("ui_menu_hr", x0 + 12 * K, y + head_h - 4 * K, w - 24 * K, 2 * K)
   local s, e = scroll(), math.min(#list, scroll() + ROWS - 1)
   local ry = y + head_h
@@ -662,6 +766,7 @@ function M.build_frame(ctx)
       -- A heading: in the tab titles' font, gold, centred, with the rule under it.
       local hs = 21 * K / UI.line_height("giant")
       local hw = UI.width(ctx, "giant", it.label:upper()) * hs
+      if hw > inner then hs = hs * inner / hw; hw = inner end
       text("giant", hs, it.label:upper(), cx - hw / 2, ry + (row_h - 21 * K) / 2, GOLD)
       quad("ui_menu_hr", x0 + 40 * K, ry + row_h - 3 * K, w - 80 * K, 2 * K)
       ry = ry + row_h
@@ -732,13 +837,15 @@ function M.build_frame(ctx)
   y = y + box_h + 8 * K
   -- The description, then the buttons.
   local it = current_item()
-  local help = it.help or ""
+  local help = help_text(it.help)
   if it.kind == "value" and help ~= "" and not it.bar then help = help .. "  Default " .. it.fmt(it.default) .. "." end
-  local lines = wrap_help(help)
+  local room = w - 24 * K
+  local function fits(l) return #l <= HELP_WIDTH and UI.width(ctx, "thin", l) * help_size <= room end
+  local lines = wrap_help(help, fits)
   -- Messages first, in gold, wrapped like the help (at most STATUS_LINES).
   local status_n = 0
   if M.status ~= "" and M.tick < M.status_until then
-    local wrapped = wrap_help(M.status)
+    local wrapped = wrap_help(M.status, fits)
     status_n = math.min(#wrapped, STATUS_LINES)
     for k = status_n, 1, -1 do table.insert(lines, 1, wrapped[k]) end
   end
@@ -752,29 +859,42 @@ function M.build_frame(ctx)
     hy = hy + line_h
   end
   -- Buttons.
-  local bx = x0 + 12 * K
-  local function hint(image, label)
-    if image then
-      quad(image, bx, hy - 2 * K, 22 * K, 23 * K)
-      bx = bx + 25 * K
-    end
-    text("thin", help_size, label, bx, hy, WHITE)
-    bx = bx + UI.width(ctx, "thin", label) * help_size + 14 * K
-  end
+  -- (collected first, then shrunk together if they'd run past the box)
+  local hints = {}
+  local function hint(image, label) hints[#hints + 1] = { image, label } end
   if pad then
     hint("a_button", page() and "ACCEPT" or "SELECT"); hint("b_button", "BACK"); hint("control_dpad", "MOVE / CHANGE")
     if combo_text ~= "" then hint(nil, combo_text:upper() .. " CLOSE") end
+    for _, pr in ipairs(page() and page().prompts or {}) do hint(pr.pad:lower() .. "_button", prompt_label(pr)) end
   else
-    hint(nil, page() and "ENTER ACCEPT" or "ENTER SELECT"); hint(nil, "BACKSPACE BACK"); hint(nil, "ARROWS MOVE / CHANGE"); hint(nil, KEY.open .. " CLOSE")
+    hint(nil, page() and "ENTER ACCEPT" or "ENTER SELECT"); hint(nil, "BACKSPACE BACK"); hint(nil, "ARROWS MOVE / CHANGE")
+    for _, pr in ipairs(page() and page().prompts or {}) do hint(nil, pr.key .. " " .. prompt_label(pr)) end
+    hint(nil, KEY.open .. " CLOSE")
+  end
+  local total = 0
+  for _, h in ipairs(hints) do
+    total = total + (h[1] and 25 * K or 0) + UI.width(ctx, "thin", h[2]) * help_size + 14 * K
+  end
+  local sc = math.min(1, (w - 24 * K) / math.max(1, total - 14 * K))
+  local bx = x0 + 12 * K
+  for _, h in ipairs(hints) do
+    if h[1] then
+      quad(h[1], bx, hy - 2 * K + 23 * K * (1 - sc) / 2, 22 * K * sc, 23 * K * sc)
+      bx = bx + 25 * K * sc
+    end
+    text("thin", help_size * sc, h[2], bx, hy, WHITE)
+    bx = bx + (UI.width(ctx, "thin", h[2]) * help_size + 14 * K) * sc
   end
   return fr
 end
 
 -- "game" (the game's interface) or "text" (plain overlay text); live.
 function M.set_style(name)
-  style_game = name == "game"
+  style_game = name ~= "text"
+  retry_at = 0
   GAMEUI.ok = true
   if not style_game then GAMEUI.frame = nil end
+  UI.retry()
 end
 function M.style() return style_game and "game" or "text" end
 
@@ -812,15 +932,15 @@ end
 
 function M.render(tick)
   GAMEUI.backdrop = nil
-  if M.open and style_game and GAMEUI.ready() and M.ctx then
+  if M.open and style_game and UI.ready() and M.ctx and tick >= retry_at then
     local ok, fr = pcall(M.build_frame, M.ctx)
     if ok then
       GAMEUI.frame = fr
       if M.dll and last_text ~= "" then mailbox_write("") end
       return
     end
-    wml.log("menu (game look): " .. tostring(fr) .. "; plain text menu instead")
-    style_game = false
+    wml.log("menu (game look): " .. tostring(fr) .. "; temporary text fallback; retrying")
+    retry_at = tick + 60
   end
   GAMEUI.frame = nil
   if not M.dll then return end
@@ -855,7 +975,7 @@ function M.render(tick)
   if e < #list then lines[#lines + 1] = "    ..." end
   lines[#lines + 1] = ""
   local it = current_item()
-  local help = it.help or ""
+  local help = help_text(it.help)
   if it.kind == "value" and help ~= "" and not it.bar then help = help .. "  Default " .. it.fmt(it.default) .. "." end
   for _, l in ipairs(wrap_help(help)) do lines[#lines + 1] = l end
   if device == "pad" then
@@ -863,6 +983,9 @@ function M.render(tick)
   else
     lines[#lines + 1] = "Up/Down move   Left/Right adjust   Enter select   PgUp/PgDn tab   " .. KEY.open .. " close"
   end
+  local extra = {}
+  for _, pr in ipairs(page() and page().prompts or {}) do extra[#extra + 1] = (device == "pad" and pr.pad or pr.key) .. " " .. prompt_label(pr):lower() end
+  if #extra > 0 then lines[#lines + 1] = table.concat(extra, "   ") end
   -- Messages wrap like the help (a long "Show active tweaks" list ran off
   -- the screen), at most STATUS_LINES lines.
   if M.status ~= "" and tick < M.status_until then
@@ -875,16 +998,19 @@ function M.render(tick)
   mailbox_write(table.concat(lines, "\n"))
 end
 
+
 -- Settings > Menu look: the plain text or itsMJQ's game look, switched live
 -- and kept in mod.ini (menu_style).
 F.add_rows("Settings", "master", {
   { id = "menu_look", label = "Menu look", kind = "choice", needs = "none", options = { "Plain text", "Game style" },
     v = style_game and 2 or 1, nosave = true,
-    help = "Plain text, or the game's own menu look (its fonts, gold bar, menu box and sounds) by itsMJQ.",
+    help = "Plain text, or the game's own menu look (its fonts, gold bar, menu box and sounds) by itsMJQ. Switch to Game style again to retry it after a drawing problem.",
     change = function(ctx, p, v, it)
       M.set_style(it.v == 2 and "game" or "text")
       if F.ADDONS then F.ADDONS.save_setting(wml.mod_folder .. "/mod.ini", "menu_style", M.style()) end
     end },
+  { id = "menu_hold_back", label = "Hold Back/Select opens the menu", kind = "toggle", needs = "none", v = S("menu_hold_back", false),
+    help = "A third way to open and close the menu: hold Back (Select on PlayStation) for a moment. A short tap still reaches the game. F5 and " .. (combo_text ~= "" and combo_text or "RB + D-pad Down") .. " work either way." },
   { id = "menu_background", label = "Menu background", kind = "value", needs = "none", default = 0, min = 0, max = 100, step = 10,
     v = S("menu_background", 60),
     fmt = function(v) return v <= 0 and "Off" or string.format("%d%%", v) end,

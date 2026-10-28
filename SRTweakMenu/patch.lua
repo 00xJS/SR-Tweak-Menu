@@ -3,8 +3,8 @@
 -- Edits the game's tables inside the player's own packfiles. The same tables
 -- live in misc.vpp_xbox2 and misc2.vpp_xbox2, so both are patched.
 --
---   vehicles.xtbl          Nitro_Capable (every car can take nitrous; the
---                          menu decides who may use it), and the optional
+--   vehicles.xtbl          Nitro_Capable (every car can take nitrous, only
+--                          with Nitrous in every vehicle on), and the optional
 --                          speed, torque and hitpoint settings
 --   weapons.xtbl           NPC_Damage, Trigger_Type (optional settings)
 --   spawn_info_ranks.xtbl  enemies' Hit_Points (optional setting)
@@ -15,10 +15,32 @@
 --                          give (free shopping, bulletproof ...); nothing
 --                          has them until you pick one
 --
--- Every number comes from [settings] in mod.ini; at their defaults only
--- Nitro_Capable changes. Everything else is switched live in the menu.
+-- Every number comes from [settings] in mod.ini; at their defaults nothing
+-- changes. Everything else is switched live in the menu.
 
 local PACKS = { "misc.vpp_xbox2", "misc2.vpp_xbox2" }
+
+-- The clothing rows (Customize > Clothing mods) are start-up rows: the menu
+-- saves them to saved_tweaks.ini straight away, and that wins over mod.ini.
+local saved_tweaks = {}
+do
+  local f = io.open(wml.mod_folder .. "/saved_tweaks.ini", "r")
+  if f then
+    for line in f:lines() do
+      local k, v = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
+      if k and not line:match("^%s*;") then saved_tweaks[k] = v end
+    end
+    f:close()
+  end
+end
+local function startup(key, default)
+  local v = saved_tweaks[key]
+  if v == "true" then return true elseif v == "false" then return false end
+  if key == "work_boots" and v then
+    return ({ ["Off"] = "off", ["Own shoe"] = "duplicate", ["Replace Hiking Boots"] = "replace" })[v] or default
+  end
+  return wml.setting(key, default)
+end
 
 local S = {
   uniform        = wml.setting("vehicle_uniform", false),
@@ -26,7 +48,7 @@ local S = {
   torque_per_kg  = wml.setting("vehicle_torque_per_kg", 0.45),
   reference      = wml.setting("vehicle_reference", "car_2dr_exoticsports01"),
   accel_mult     = wml.setting("vehicle_acceleration_multiplier", 1.0),
-  nitro_all      = true,
+  nitro_all      = startup("nitro_all", wml.setting("vehicle_nitrous_everywhere", false)),
   npc_health     = wml.setting("npc_health_multiplier", 1),
   melee_impulse  = wml.setting("melee_impulse_multiplier", 1),
   speed_mult     = wml.setting("vehicle_speed_multiplier", 1.0),
@@ -261,9 +283,36 @@ local HUD_IMAGES = {
   { "hud_sheet_10", "recruit_wrollerz_m", 256, 384, 64, 64 },
   { "hud_sheet_10", "recruit_wrollerz_f", 320, 384, 64, 64 },
   { "hud_sheet_10", "recruit_coop_player", 384, 384, 64, 64 },
+  { "hud_sheet_10", "srt_slate_digits", 384, 448, 128, 64 },
+  { "hud_sheet_10", "srt_ammo_0", 192, 224, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_1", 192, 256, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_2", 132, 360, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_3", 156, 360, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_4", 180, 360, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_5", 204, 360, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_6", 228, 360, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_7", 96, 364, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_8", 224, 392, 24, 32 },
+  { "hud_sheet_10", "srt_ammo_9", 224, 424, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_0", 452, 0, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_1", 452, 32, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_2", 452, 64, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_3", 476, 84, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_4", 452, 96, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_5", 476, 116, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_6", 452, 128, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_7", 476, 148, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_8", 452, 160, 24, 32 },
+  { "hud_sheet_08", "srt_reserve_9", 476, 180, 24, 32 },
+  { "hud_sheet_08", "srt_brush_left", 320, 384, 64, 64 },
+  { "hud_sheet_08", "srt_respect_0", 456, 216, 32, 32 },
+  { "hud_sheet_08", "srt_respect_1", 456, 256, 32, 32 },
+  { "hud_sheet_08", "srt_respect_2", 456, 296, 32, 32 },
+  { "hud_sheet_08", "srt_respect_3", 456, 336, 32, 32 },
+  { "hud_sheet_10", "srt_brush_right", 448, 384, 64, 64 },
 }
-local function patch_hud_sheets(peg)
-  local file = io.open(wml.mod_folder .. "/hud_images.bin", "rb")
+local function patch_hud_sheets(peg, filename)
+  local file = io.open(wml.mod_folder .. "/" .. filename, "rb")
   if not file then return peg, 0 end
   local bin = file:read("*a"); file:close()
   if bin:sub(1, 4) ~= "SRT2" then return peg, 0 end
@@ -325,7 +374,9 @@ end
 do
   local peg = wml.packfile_read("pegfiles.vpp_xbox2", "interface-backend.peg_xbox2")
   if peg then
-    local new, n = patch_hud_sheets(peg)
+    local new, n = patch_hud_sheets(peg, "hud_images.bin")
+    local polished, more = patch_hud_sheets(new, "hud_polish.bin")
+    new, n = polished, n + more
     if n > 0 then
       wml.packfile_write("pegfiles.vpp_xbox2", "interface-backend.peg_xbox2", new)
       wml.log("pegfiles.vpp_xbox2: interface-backend.peg_xbox2 - " .. n .. " blocks of new HUD pictures")
@@ -416,6 +467,169 @@ for _, pack in ipairs(PACKS) do
       end
     else
       debug(pack .. ": " .. name .. " not found")
+    end
+  end
+end
+
+-- Juiced bank startup replacement withdrawn in 1.9.26: save-load recovery.
+
+-- Medium Parted 02 (Saints Row 2) in place of Flat Top, Lightning. WML only
+-- replaces files a pack already has, and the game wears a piece only if
+-- player_cust.xtbl lists its mesh and variant - so the SR2 hair goes into
+-- Flat Top B's own files (its mesh, texture and both morphs, in the mesh and
+-- morph streams) and keeps that item's ids. sr2_hair in mod.ini.
+do
+  local folder=wml.mod_folder.."/hair_port/"
+  local function file(name)
+    local f=io.open(folder..name,"rb");local d=f and f:read("a");if f then f:close() end;return d
+  end
+  local files={
+    {"cmesh_stream.vpp_xbox2","htop_flattopb.cmesh_xbox2","htop_sr2partedm02.cmesh_xbox2"},
+    {"cmesh_stream.vpp_xbox2","htop_flattopb.peg_xbox2","htop_sr2partedm02.peg_xbox2"},
+    {"cmesh_stream.vpp_xbox2","htop_flattopb_pc.morph_xbox2","htop_sr2partedm02_pc.morph_xbox2"},
+    {"morph_stream.vpp_xbox2","htop_flattopb_pc.morph_xbox2","htop_sr2partedm02_pc.morph_xbox2"},
+    {"morph_stream.vpp_xbox2","htop_flattopb_car_pc.morph_xbox2","htop_sr2partedm02_car_pc.morph_xbox2"},
+  }
+  local ready=true
+  for _,f in ipairs(files) do f[4]=file(f[3]);ready=ready and f[4]~=nil end
+  if startup("sr2_hair",false) and ready then
+    local ok,err=pcall(function() for _,f in ipairs(files) do wml.packfile_write(f[1],f[2],f[4]) end end)
+    wml.log(ok and "Medium Parted 02: in place of Flat Top, Lightning" or ("Medium Parted 02: "..tostring(err)))
+  end
+end
+
+-- Names shown in the game (US_Strings.txt: UTF-16, KEY=Text per line, then
+-- the number of entries). Only existing keys get new text, so the count
+-- stays right - a line added after it broke every string in the game.
+do
+  local names={}
+  if startup("sr2_hair",false) then names.CUST_ITEM_FLAT_TOP_DESIGN_A="Medium Parted" end
+  if startup("playa_choice",false) then names.CUST_ITEM_SHIRT_AZZURE="Cropped Football Jersey" end
+  local function utf16(s) return (s:gsub(".","%0\0")) end
+  for _,pack in ipairs({"misc.vpp_xbox2","misc2.vpp_xbox2"}) do
+    local text=wml.packfile_read(pack,"US_Strings.txt")
+    if text then
+      local changed=0
+      for key,value in pairs(names) do
+        local s=text:find(utf16("\r\n"..key.."="),1,true)
+        local e=s and text:find(utf16("\r\n"),s+4,true)
+        if e then text=text:sub(1,s-1)..utf16("\r\n"..key.."="..value)..text:sub(e);changed=changed+1 end
+      end
+      if changed>0 then wml.packfile_write(pack,"US_Strings.txt",text);wml.log(pack..": "..changed.." names changed") end
+    end
+  end
+end
+
+-- Playa Choice by CommyGT (saintsrowmods.com, "SR1 - Playa Choice"), its
+-- clothing only: the necklace fixes (Sleeveless Henley, Hensley, Roundneck
+-- Pullover), cropping and untucked undershirts, the Parted Afro at Do It Up,
+-- the Light Silver Braided Belt, the Cross Pendant and MP chains, and every
+-- unlockable in the stores. Prices and respect stay the game's own (its
+-- respect and economy changes are left out). playa_choice in mod.ini.
+do
+  local folder=wml.mod_folder.."/playa_choice/"
+  local function file(name)
+    local f=io.open(folder..name,"rb");local d=f and f:read("a");if f then f:close() end;return d
+  end
+
+  local items,stores=file("items.xml"),file("customization_stores.xtbl")
+  if startup("playa_choice",false) and items and stores then
+    for _,name in ipairs({"misc.vpp_xbox2","misc2.vpp_xbox2"}) do
+      local xml=wml.packfile_read(name,"customization_items.xtbl")
+      if xml and not xml:find("<!-- playa choice -->",1,true) then
+        local n=0
+        for block in items:gmatch("<Customization_Item>.-</Customization_Item>") do
+          local item=block:match("<Name>([^<]*)</Name>")
+          local s=xml:find("<Customization_Item>%s*<Name>"..item:gsub("%p","%%%0").."</Name>")
+          local e=s and xml:find("</Customization_Item>",s,true)
+          if e then xml=xml:sub(1,s-1)..block..xml:sub(e+#"</Customization_Item>");n=n+1 end
+        end
+        -- The Parted Afro (cut, never sold) takes Frohawk, Striped's place: its
+        -- meshes and name on that item. The pair the game wears by must be one
+        -- player_cust.xtbl lists - (variant 36, mesh 119) for the afro and
+        -- (36, 132) for its hat version - and the Frohawk's variant is 36.
+        local fs=xml:find("<Customization_Item>%s*<Name>curley mohawk, striped sides</Name>")
+        local fe=fs and xml:find("</Customization_Item>",fs,true)
+        if fe then
+          local row=xml:sub(fs,fe-1)
+          row=row:gsub("CUST_ITEM_CURLY_MOHAWK_STRIPED_SIDES","CUST_ITEM_PARTED_AFRO",1)
+          row=row:gsub("hTop_fuzzyMowhawkC%.cmeshx","htop_partedafro.cmeshx",1):gsub("<MeshID>123</MeshID>","<MeshID>119</MeshID>",1)
+          row=row:gsub("hTop_flatmoC%.cmeshx","hTop_flatAfro.cmeshx",1):gsub("<MeshID>142</MeshID>","<MeshID>132</MeshID>",1)
+          xml=xml:sub(1,fs-1)..row..xml:sub(fe)
+          n=n+1
+        end
+        wml.packfile_write(name,"customization_items.xtbl",(xml:gsub("</Table>","<!-- playa choice -->\n</Table>",1)))
+        wml.packfile_write(name,"customization_stores.xtbl",stores)
+        wml.log(name..": Playa Choice clothing - "..n.." items updated (Frohawk, Striped is the Parted Afro), stores")
+      end
+    end
+  end
+end
+
+-- Ultor Unlimited Work Boots: the Timberland boots (saintsrowmods.com,
+-- "Timberland Boots" for Saints Row 1) as a shoe of their own beside the
+-- Hiking Boots. work_boots in mod.ini:
+--   duplicate  a new item, Ultor Unlimited Work Boots. WML only replaces
+--              files a pack already has, so the boots go into the game's
+--              own unused Timberland boots (cshoe_timberland, which no item
+--              wears), plus a store entry and its name
+--   replace    the Hiking Boots look like them (the stock files replaced)
+--   off        nothing
+do
+  local mode=tostring(startup("work_boots","off")):lower()
+  local folder=wml.mod_folder.."/work_boots/"
+  local STREAM="cmesh_stream.vpp_xbox2"
+  local function read(name)
+    local f=io.open(folder.."cshoe_timberland"..name,"rb")
+    local d=f and f:read("a");if f then f:close() end
+    return d
+  end
+  local parts={{".cmesh_xbox2"},{".peg_xbox2"},{"_pc.morph_xbox2"}}
+  for _,p in ipairs(parts) do p[2]=read(p[1]) end
+  local ready=parts[1][2] and parts[2][2] and parts[3][2]
+  if mode=="off" or not ready then
+    if not ready and mode~="off" then wml.log("Work boots: files missing in work_boots/") end
+  elseif mode=="replace" then
+    for _,p in ipairs(parts) do wml.packfile_write(STREAM,"cshoe_hikingboots"..p[1],p[2]) end
+    wml.log("Work boots: Hiking Boots replaced by the Timberland boots")
+  else
+    local ok,err=pcall(function()
+      for _,p in ipairs(parts) do wml.packfile_write(STREAM,"cshoe_timberland"..p[1],p[2]) end
+    end)
+    if not ok then
+      wml.log("Work boots: the Timberland slot couldn't be written ("..tostring(err).."); set work_boots = replace")
+    else
+      local function utf16(s) return (s:gsub(".","%0\0")) end
+      for _,name in ipairs({"misc.vpp_xbox2","misc2.vpp_xbox2"}) do
+        local xml=wml.packfile_read(name,"customization_items.xtbl")
+        if xml and not xml:find("<Name>ultor work boots</Name>",1,true) then
+          local s=xml:find("<Customization_Item>%s*<Name>hiking boots</Name>")
+          local e=s and xml:find("</Customization_Item>",s,true)
+          local ending=xml:find("</Table>",1,true)
+          if e and ending then
+            -- (ids the game's items leave unused, inside their range)
+            local function free(tag)
+              local used,top={},0
+              for v in xml:gmatch("<"..tag..">%s*(%d+)%s*</"..tag..">") do local n=tonumber(v);used[n]=true;top=math.max(top,n) end
+              for v=top-1,1,-1 do if not used[v] then return tostring(v) end end
+            end
+            local item,mesh,variant=free("ID"),free("MeshID"),free("VariantID")
+            if item and mesh and variant then
+              local row=xml:sub(s,e+#"</Customization_Item>"-1)
+              row=row:gsub("<Name>hiking boots</Name>","<Name>ultor work boots</Name>",1)
+                :gsub("CUST_ITEM_HIKING_BOOTS","CUST_ITEM_ULTOR_WORK_BOOTS",1)
+                :gsub("cShoe_hikingBoots%.cmeshx","cShoe_timberland.cmeshx")
+                :gsub("<MeshID>%d+</MeshID>","<MeshID>"..mesh.."</MeshID>",1)
+                :gsub("<ID>%d+</ID>","<ID>"..item.."</ID>")
+              -- one variant: the boots' own texture
+              local vs,ve=row:find("<Variants>.-</Variants>")
+              row=row:sub(1,vs-1).."<Variants>\n\t\t\t<Variant>\n\t\t\t\t<Name>CUST_VARIANT_DEFAULT</Name>\n\t\t\t\t<Variant_Name>default</Variant_Name>\n\t\t\t\t<VariantID>"..variant.."</VariantID>\n\t\t\t\t<Price>250</Price>\n\t\t\t\t<Respect_Bonus>30</Respect_Bonus>\n\t\t\t\t<MPPrice>0</MPPrice>\n\t\t\t\t</Variant>\n\t\t\t</Variants>"..row:sub(ve+1)
+              wml.packfile_write(name,"customization_items.xtbl",xml:sub(1,ending-1).."\t"..row.."\n"..xml:sub(ending))
+              wml.log(name..": Ultor Unlimited Work Boots added (item "..item..", mesh "..mesh..", variant "..variant..")")
+            end
+          end
+        end
+      end
     end
   end
 end

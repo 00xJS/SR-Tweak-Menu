@@ -126,7 +126,7 @@ if not H.standalone then
       write_u32(a + i, y); write_u32(b + i, x)
     end
   end
-  G.hook(HUD_HEADS, function(ctx)
+  H.draw_heads = function(ctx)
     local p = ctx:r(3)
     local alpha = ctx:f(1)
     ctx:call_original()
@@ -147,18 +147,32 @@ if not H.standalone then
       for j = 0, 2 do write_u32(SLOT_BASE + 16 * j, (to_int(saved_x[j + 1]) + span * pass) & 0xFFFFFFFF) end
       fade_extra[pass] = fade_extra[pass] or {}
       for i = 0, FADE_BYTES - 4, 4 do write_u32(FADE_BASE + i, fade_extra[pass][i] or 0) end
+      require("hud_layout").homie_pass(pass)
       hud_pass = true
       ctx:set_r(3, p); ctx:set_f(1, alpha)
-      ctx:call_original()
+      local ok,why=pcall(function() ctx:call_original() end)
       hud_pass = false
       for i = 0, FADE_BYTES - 4, 4 do fade_extra[pass][i] = read_u32(FADE_BASE + i) end
       write_u32(p + COUNT, count)
       swap_bytes(p + LIST, p + LIST + first * ENTRY, 3 * ENTRY)
+      if not ok then
+        for i = 0, FADE_BYTES - 4, 4 do write_u32(FADE_BASE + i, fade_saved[i // 4 + 1]) end
+        for j = 0, 2 do write_u32(SLOT_BASE + 16 * j, saved_x[j + 1]) end
+        error(why)
+      end
     end
     for i = 0, FADE_BYTES - 4, 4 do write_u32(FADE_BASE + i, fade_saved[i // 4 + 1]) end
     for j = 0, 2 do write_u32(SLOT_BASE + 16 * j, saved_x[j + 1]) end
-  end)
+  end
 end
+
+-- One owner for this native hook: relocation wraps every normal/extra pass.
+-- More Homies can still supply its own native passes when enabled separately.
+G.hook(HUD_HEADS,function(ctx)
+  require("hud_layout").draw_homies(ctx,function()
+    if H.draw_heads then H.draw_heads(ctx) else ctx:call_original() end
+  end)
+end)
 
 -- Homies following you now.
 function H.count(p) return p ~= 0 and math.max(0, to_int(read_u32(p + COUNT))) or 0 end

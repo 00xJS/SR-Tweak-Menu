@@ -37,16 +37,16 @@ menu open.
 
 | Tab | |
 |---|---|
-| Player | Pages: **Health & damage** (god mode, no ragdoll, health multiplier, fall damage, no health regen, heal on D-pad down, refill health, kill yourself), **Movement** (no clip, infinite sprint, sprint presets, run boost, high jump, game jump height, soft landing, quick crouch, crouch while moving, swim speed), **Notoriety** (with the gang you side with), **Bodyguards** (bodyguards, character homies, squad, dismiss, homie limit 1 to 10), **Unlocks** (music, collectibles, clothing, multiplayer and reward clothing, rewards kept in your save); +$50,000, +5,000 respect |
-| Emotes | Poses and actions by the game's categories (with props), **Voice Lines**, staged scenes (dance pairs, strip club, house party), repeat, D-pad taunts |
-| Weapons | Infinite ammo, no reload, rapid fire, one-hit kill, heavy knockback, perfect aim, no melee lock-on, reload in cars; **Special ammo** (rocket, fire, money gun, explosive punches); **Aiming & switching** (aim style: the game's own, Precise Aim or Fine Aim, the Precise Aim camera page, Fine Aim's zoom and spread, aim button, turning while aiming, weapon switch with its D-pad and wheel tap); **Skins** (a colour for each of 18 weapons); give any weapon (including the Pimp Slap), give every weapon, refill all ammo |
+| Player | Pages: **Health & damage** (god mode, no ragdoll, health multiplier, fall damage, no health regen, heal on D-pad down, refill health, kill yourself), **Movement** (no clip, infinite sprint, sprint presets, run boost, high jump, game jump height, soft landing, quick crouch, crouch while moving, swim speed), **Notoriety** (with the gang you side with), **Bodyguards** (bodyguards, character homies, squad, dismiss, homie limit 1 to 10), **Unlocks** (music, collectibles, clothing, multiplayer and reward clothing, rewards kept in your save); **Items** (food and drugs); +$50,000, +5,000 respect |
+| Emotes | Poses and actions by the game's categories (with props), **Voice Lines**, staged scenes (dance pairs, strip club, house party), repeat, D-pad taunts (including multiplayer style) |
+| Weapons | Infinite ammo, no reload, rapid fire, one-hit kill, heavy knockback, perfect aim, no melee lock-on, reload in cars, multiplayer Pimp Slap; **Special ammo** (rocket, fire, money gun, explosive punches); **Aiming & switching** (aim style: the game's own, Precise Aim or Fine Aim, the Precise Aim camera page, Fine Aim's zoom and spread, aim button, turning while aiming, weapon switch with its D-pad and wheel tap); **Skins** (a colour for each of 18 weapons); give any weapon (including the Pimp Slap), a page of every weapon, remove a weapon you carry, give an item, give every weapon, refill all ammo |
 | Vehicles | Vehicle god mode, repair; **Toughness** (tank mode, bulletproof glass and tires, no explosion fling), **Handling** (extra grip, nitrous everywhere, extra top speed, bouncy cars, less stiff cars), **Look** (customize vehicle, paint, secondary colour, brake lights when stopped), **Driving camera** (free camera in cars, reset time up to never, swing-back speed, follows the nose in a slide, free drive-by camera, no swing getting in, field of view at top speed); spawn any of 79 vehicles (plus 24 blinged versions), deliver to garage, destroy |
-| World | Weather, no fog, time of day, freeze time, clear / restore streets, stores open 24/7; **People** (spawn any of 188 people, crowds, everybody dance or pose, ragdoll all, kill everyone, gangs in ordinary cars, gangs and police without guns); **Drops** (cash or weapons around you, money rain, cash drop chance); **Districts** (hand any district or the whole city to a gang, reveal the whole map) |
-| Visual | Hide HUD, map arrow shows where you face, letterbox, filters, render mode, saturation; **Camera** (field of view, over-the-shoulder camera, first person, camera turn speed); **Free camera** (fly it, or leave it in place and play from that shot, also in cutscenes; freeze world); **UI+** (low health and low sprint visuals, low health sound echo) |
-| Teleport | Cribs, **saved places** (save any spot, go back, rename, delete), every store, every activity, teleport to map waypoint |
+| World | Weather, sky, no fog, time of day, freeze time, clear / restore streets, stores open 24/7; **People** (spawn any of 188 people, crowds, everybody dance or pose, ragdoll all, kill everyone, gangs in ordinary cars, gangs and police without guns); **Drops** (cash or weapons around you, money rain, cash drop chance); **Districts** (hand any district or the whole city to a gang, or back to your story progress; reveal the whole map) |
+| Visual | Hide HUD, map arrow shows where you face, letterbox (cutscenes too), filters, render mode (with Pitch Black), draw distance, bloom, saturation; **Camera** (field of view, over-the-shoulder camera, first person, camera turn speed); **Free camera** (fly it, or leave it in place and play from that shot, also in cutscenes; freeze world); **UI+** (itsMJQ's HUD styles, Default+ and SR '22, with their motion, reactions and homie and money placement; low health and low sprint visuals, low health sound echo) |
+| Teleport | Cribs, **saved places** (save any spot, go back, rename, delete), every store, every activity, every stronghold, teleport to map waypoint |
 | Models | Play as any character model, live: switch, restore your Playa, reload your character; dialogue, animation fallback, cloth physics |
-| Customize | The game's character creator, free, as yourself: head, eyes, hair, body, skin, clothes, jewelry, tattoos, 10 saved looks and outfits, voice, facial expressions, movement styles; restore outfit, customization pose |
-| Settings | Master switch, **menu look** (plain text or itsMJQ's game look), show active tweaks (every changed setting, by where it is), **save tweaks for next time**, forget saved tweaks, restore menu or game defaults; **Game & saving** (skip intro, load last save, quick save, pause cutscenes, no tutorial popups) |
+| Customize | The game's character creator, free, as yourself: head, eyes, hair, body, skin, clothes, jewelry, tattoos, body type, Randomize on every page, 20 saved looks and outfits, voice, facial expressions (with 26 imported from Saints Row 2), movement styles; restore outfit, customization pose; **Reactions and physics** (reactive expressions, voice reactions, mouth moves when you talk, breast physics); **Clothing mods** (Playa Choice, work boots, Saints Row 2 hair) |
+| Settings | Master switch, **menu look** (plain text or itsMJQ's game look), show active tweaks (every changed setting, by where it is), **save tweaks for next time**, forget saved tweaks, restore menu or game defaults, hold Back/Select opens the menu (off at start); **Game & saving** (skip intro, load last save, quick save, pause cutscenes, no tutorial popups) |
 
 Cheats start off; a few quality-of-life rows start on (crouch while moving, field of view x1.2, the driving camera), as `mod.ini` sets. **Settings > Save tweaks for next time** makes the menu start the way you've set it. Every menu row has a help line. See
 `SRTweakMenu/CHANGELOG.md` for what changed.
@@ -70,7 +70,9 @@ SR Tweak Menu already includes them.
 ## Notes
 
 - Private play only: story co-op and private parties, not public matches.
-- Contains no game files.
+- The repository contains no game files. The release zip carries the converted
+  assets itsMJQ's rows load (body type, imported faces, Saints Row 2 hair,
+  Playa Choice and the work boots); they stay out of git.
 
 ## Credits
 
@@ -90,8 +92,12 @@ SR Tweak Menu already includes them.
 - **itsMJQ**: the Models and Customize tabs, movement styles, the emotes
   pages, voice lines and voices, character homies, customize vehicle, store
   and activity teleports, unlocks, render modes, the UI+ screen effects, the
-  music fixes, the menu's pages and moving with the menu open, and the
-  findings behind them (see the changelog).
+  music fixes, the menu's pages and moving with the menu open, the HUD
+  styles, body type, imported facial expressions, reactions, districts back
+  to your story progress, and the findings behind them (see the changelog).
+- Playa Choice by CommyGT and the Timberland boots mod, from
+  [saintsrowmods.com](https://www.saintsrowmods.com/forum/forums/saints-row-2006.237/),
+  brought in by itsMJQ (clothing only).
 - [Precise Aim](https://github.com/Eazeepz/Precise-Aim) and
   [Weapon Switch](https://github.com/Eazeepz/Weapon-Switch) by Eazzy (Eazeepz),
   and [Fine Aim](https://github.com/car123609/SaintsReborn-Fine-Aim-Precision-Gunplay)

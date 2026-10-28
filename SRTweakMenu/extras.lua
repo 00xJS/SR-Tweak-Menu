@@ -147,7 +147,9 @@ local CAN_HEAL, CAN_ACT = 0x8000, 0x2400
 local PAD_STATE = 0x827166D0
 local PAD_UP, PAD_LEFT, PAD_RIGHT = 0x1, 0x4, 0x8
 local TAUNT_ACTION = 597   -- + 1, 2, 3
-local TAUNT_MODES = { "Off", "Left and right", "Up, left and right" }
+-- (Multiplayer style is features.lua's, after itsMJQ: down, left and right,
+-- played over what you're doing, with a voice line.)
+local TAUNT_MODES = { "Off", "Left and right", "Up, left and right", "Multiplayer style" }
 local taunt = { previous = 0, want = nil }
 
 -- ================================================================ stores 24/7
@@ -197,7 +199,7 @@ local HOODS = {
   { "lc_docks02", "Docks And Warehouses", "Los Carnales" }, { "lc_docks03", "Docks And Warehouses", "Los Carnales" },
   { "lc_factory01", "Factories", "Los Carnales" }, { "lc_factory02", "Factories", "Los Carnales" },
   { "lc_factory03", "Factories", "Los Carnales" }, { "lc_factory04", "Factories", "Los Carnales" },
-  { "ts_saintsrow01", "Saints Row", "Vice Lords" }, { "ts_saintsrow02", "Saints Row", "Rollerz" },
+  { "ts_saintsrow01", "Saints Row", "Playas" }, { "ts_saintsrow02", "Saints Row", "Rollerz" },
   { "ts_saintsrow03", "Saints Row", "Los Carnales" }, { "vk_downtown01", "Downtown", "Vice Lords" },
   { "vk_downtown02", "Downtown", "Vice Lords" }, { "vk_downtown03", "Downtown", "Vice Lords" },
   { "vk_downtown04", "Downtown", "Vice Lords" }, { "vk_highend01", "High End Retail", "Vice Lords" },
@@ -212,7 +214,20 @@ local HOODS = {
 }
 local DISTRICTS = { "Whole city", "Airport", "Apartments", "Barrio", "Chinatown", "Docks And Warehouses", "Downtown",
   "Factories", "High End Retail", "Museum", "Projects", "Race Track", "Red Light", "Saints Row", "Suburbs", "Truck Yard" }
-local OWNERS = { "Saints", "Vice Kings", "Los Carnales", "Rollerz", "Starting owners" }
+local OWNERS = { "Saints", "Vice Kings", "Los Carnales", "Rollerz", "Starting owners", "Your story progress" }
+-- Your story progress: what the game's own scripts hand you. A story mission
+-- gives its hoods when it's done (is_mission_complete); a stronghold's hood
+-- has no such test, so it goes back to who had it before the menu first
+-- changed it this session (taken then), and stays as it is without that.
+-- (ts_saintsrow01 is yours from the start.)
+local HOOD_STORY = {
+  lc_barrio03 = "lc01", lc_factory01 = "lc01", lc_factory04 = "lc04", lc_docks01 = "lc05", lc_barrio02 = "lc08",
+  lc_barrio01 = "lc09", lc_airport01 = "lc10", ts_saintsrow02 = "tss02",
+  vk_redlight01 = "vk01", vk_downtown02 = "vk02", vk_redlight03 = "vk03a", vk_highend01 = "vk05", vk_highend02 = "vk06a",
+  vk_museum01 = "vk06b", vk_museum02 = "vk07", vk_downtown04 = "vk08", vk_downtown03 = "vk09",
+  wr_chinatown01 = "wr02", wr_apartments01 = "wr03", wr_arena01 = "wr06",
+  ts_saintsrow01 = "start",
+}
 local OWNER_TEAMS = { "Playas", "Vice Lords", "Los Carnales", "Rollerz" }
 
 -- ================================================================ gangs drive ordinary cars
@@ -524,7 +539,7 @@ function E.setup(features)
       update = function() end },
     { id = "dpad_taunts", label = "D-pad taunts", kind = "value", needs = "none", default = 1, min = 1, max = #TAUNT_MODES, step = 1,
       v = S("dpad_taunts", 1), fmt = named(TAUNT_MODES),
-      help = "Multiplayer's three taunts on foot: D-pad left and right (arrow keys), and up too if you like (up still recruits). Left and right are off while Weapon switch uses the D-pad.",
+      help = "Taunts on foot: D-pad left and right, or up too (up still recruits). Multiplayer style (itsMJQ): down, left and right, with voice lines. Not while Weapon switch uses the D-pad.",
       update = function() end },
   })
 
@@ -599,7 +614,7 @@ function E.setup(features)
     { id = "district", label = "District", kind = "choice", needs = "none", options = DISTRICTS,
       help = "Which part of Stilwater to hand over." },
     { id = "district_owner", label = "Give it to", kind = "choice", needs = "none", options = OWNERS,
-      help = "Who gets it. Starting owners puts it back the way a new game starts." },
+      help = "Who gets it. Starting owners puts it back the way a new game starts; Your story progress gives back what your missions and strongholds won." },
     { id = "district_apply", label = "Hand it over", kind = "action",
       help = "Changes who owns those neighbourhoods. Saved with your game: owning hoods unlocks homie slots and rewards, and missions can change owners again.",
       run = function(ctx, p) return E.hand_over() end },
@@ -677,14 +692,72 @@ function E.setup(features)
 end
 
 -- ================================================================ actions
+-- Hand it over, without the scripts: hood_set_owner's full takeover (the
+-- rewards and unlocks pass of 0x8211F9B0) crashed the game when run for a
+-- whole district or city in a row. The menu now calls 0x8211F9B0 itself
+-- with its third argument set (the owner changes, the takeover pass is
+-- skipped), one hood every few updates. Hood records: *0x8370D098 + index
+-- * 256, owner team at +72; index from 0x82120138(name), team from
+-- 0x8244A6A8(name). A mission is done when bit 0x40 of +4 of its record
+-- (0x822157C8(name hash)) is set, as is_mission_complete reads it.
+local HOOD_INDEX, TEAM_INDEX, HOOD_TAKE, MISSION_FIND = 0x82120138, 0x8244A6A8, 0x8211F9B0, 0x822157C8
+local HOOD_COUNT, HOOD_TABLE, HOOD_NOW = 0x8370D094, 0x8370D098, 0x82B30F3C
+local hood_jobs, hood_snap = {}, nil
+local function hood_record(ctx, name)
+  local idx = G.call(ctx, HOOD_INDEX, { G.cstr(ctx, name, 0) })
+  if idx >= 0x80000000 or idx >= read_u32(HOOD_COUNT) then return nil end
+  local base = read_u32(HOOD_TABLE)
+  if not G.pointer_ok(base) then return nil end
+  return idx, base + idx * 256
+end
+local function mission_done(ctx, name)
+  local rec = G.call(ctx, MISSION_FIND, { G.call(ctx, G.NAME_HASH, { G.cstr(ctx, name, 0), 0 }) })
+  return G.pointer_ok(rec) and (read_u8(rec + 4) & 0x40) ~= 0
+end
+local function hood_step(ctx)
+  if #hood_jobs == 0 or F.tick % 5 ~= 0 or G.player() == 0 or mp() then return end
+  if not hood_snap then
+    -- (who had each hood before the menu's first change this session)
+    hood_snap = {}
+    for _, h in ipairs(HOODS) do
+      local _, rec = hood_record(ctx, h[1])
+      if rec then hood_snap[h[1]] = read_u32(rec + 72) end
+    end
+  end
+  local job = table.remove(hood_jobs, 1)
+  local idx, rec = hood_record(ctx, job.hood)
+  if not idx then log("districts: no hood " .. job.hood) return end
+  local team
+  if job.team == "story" then
+    if job.mission == "start" or (job.mission and mission_done(ctx, job.mission)) then
+      team = G.call(ctx, TEAM_INDEX, { G.cstr(ctx, "Playas", 0) })
+    elseif job.mission then
+      team = G.call(ctx, TEAM_INDEX, { G.cstr(ctx, job.start, 0) })
+    else
+      team = hood_snap[job.hood]
+    end
+  else
+    team = G.call(ctx, TEAM_INDEX, { G.cstr(ctx, job.team, 0) })
+  end
+  if not team or team >= 0x80000000 then return end
+  if read_u32(rec + 72) == team then return end
+  G.call(ctx, HOOD_TAKE, { idx, team, 1 })
+  write_u32(HOOD_NOW, rec)
+  log(string.format("districts: %s -> team %d", job.hood, team))
+end
+
 function E.hand_over()
   local where = DISTRICTS[F.items.district.v] or "Whole city"
   local who = F.items.district_owner.v
   local n = 0
   for _, h in ipairs(HOODS) do
     if where == "Whole city" or h[2] == where then
-      local team = OWNER_TEAMS[who] or h[3]
-      F.queue[#F.queue + 1] = string.format('hood_set_owner("%s", "%s")', h[1], team)
+      if who == 6 then
+        hood_jobs[#hood_jobs + 1] = { hood = h[1], team = "story", mission = HOOD_STORY[h[1]], start = h[3] }
+      elseif h[1] ~= "ts_saintsrow01" or (OWNER_TEAMS[who] or h[3]) == "Playas" then
+        -- (the church's hood is always yours: the game starts you there)
+        hood_jobs[#hood_jobs + 1] = { hood = h[1], team = OWNER_TEAMS[who] or h[3] }
+      end
       n = n + 1
     end
   end
@@ -749,7 +822,7 @@ function E.install(menu)
     taunt.previous = buttons
     if pressed == 0 or not F.enabled then return end
     local mode = F.items.dpad_taunts.v
-    if mode < 2 then return end
+    if mode < 2 or mode > 3 then return end
     if (pressed & PAD_LEFT) ~= 0 then taunt.want = 2
     elseif (pressed & PAD_RIGHT) ~= 0 then taunt.want = 3
     elseif (pressed & PAD_UP) ~= 0 and mode >= 3 then taunt.want = 1 end
@@ -854,6 +927,7 @@ function E.after(ctx)
   taunt_now(ctx, p)
   rain_now(ctx, p)
   rewards_now(ctx)
+  hood_step(ctx)
 end
 
 return E

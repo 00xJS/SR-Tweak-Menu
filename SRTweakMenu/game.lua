@@ -142,6 +142,17 @@ G.MELEE_HIT      = 0x824560D8  -- (target object, attacker, ...)
 -- Weapon record fields read at every shot: +20 class (3 = shotgun), +122 u16
 -- Refire_Delay (ms), +304 f32 Ragdoll_Force_Shoot (the push of a killing shot).
 G.W = { CLASS = 20, REFIRE = 122, FORCE = 304, SHOTGUN = 3 }
+-- Melee moves (melee.xtbl): array at *G.MELEE_MOVES, count at +4, 88 bytes
+-- each: +0 name*, +44 f32 ImpactForce, +48 NPCDamage, +52 PlayerDamage,
+-- +56 OnlineDamage. A player's hit deals +56 in multiplayer, +52 offline
+-- (0x82459CD0); a person's hit +48.
+G.MELEE_MOVES, G.MELEE_MOVE_SIZE = 0x8370F854, 88
+G.MELEE = { FORCE = 44, NPC_DAMAGE = 48, PLAYER_DAMAGE = 52, ONLINE_DAMAGE = 56 }
+-- Multiplayer taunts (0x8216A038): actions Taunt 1/2/3 played with
+-- ACTION_PLAY(human, n, 0, 1, 0, 0, 0, -1, f1 0, f2 1, f3 -1), only while
+-- human+508 isn't 23 and no melee move runs (human+1956 = -1); the taunt
+-- playing is kept at human+4400 (1..3, 0 none).
+G.H_MELEE_MOVE, G.H_TAUNT = 1956, 4400
 -- Live tunables. Panic fall: falling faster than this (m/s) flails
 -- (gameplay_constants, read per character every frame). Crouch: the follow
 -- camera's crouch rate cap and damping (camera_free, read every frame).

@@ -29,6 +29,18 @@ SRTweakMenu/quicksave.dat
 SRTweakMenu/saved_places.txt
 # made from the game's HUD sheets: game data, never in the repository
 SRTweakMenu/hud_images.bin
+SRTweakMenu/hud_polish.bin
+# itsMJQ's converted game and mod assets the menu loads (body type, imported
+# faces, Saints Row 2 hair, Playa Choice, the work boots): game data, shipped
+# in the release zip only
+SRTweakMenu/body_gender/
+SRTweakMenu/juiced_runtime/
+SRTweakMenu/hair_port/
+SRTweakMenu/playa_choice/
+SRTweakMenu/work_boots/
+# files itsMJQ's rows write while you play (Body type, HUD options)
+SRTweakMenu/body_gender.txt
+SRTweakMenu/hud_preferences.txt
 # the copy of itsMJQ's version this was merged from
 MJQ-Version/
 

@@ -129,8 +129,9 @@ end
 
 -- A picture (or part of one) stretched over a rectangle, optionally flipped.
 local function draw_quad(ctx, op, s, ox, oy)
-  local h = UI.bitmap(ctx, op.image)
+  local h = op.bitmap or (op.image and UI.bitmap(ctx, op.image))
   if not h then return skip(op, "the HUD has no picture by that name") end
+  if h == 0xFFFF or h >= read_u32(BMP_COUNT) then return skip(op, "its picture number is out of range", h) end
   local e = BMP_INFO + h * 20
   local sheet = read_u32(e)
   if sheet > 64 then return skip(op, "its sheet number is out of range", sheet) end
@@ -159,6 +160,18 @@ local function draw_quad(ctx, op, s, ox, oy)
   local vb = G.call(ctx, PRIM_BEGIN, { 4, 0 })
   if not G.addr_ok(vb) then return skip(op, "no vertex buffer from the game", vb) end
   local corners = { { x0, y0, u0, v0 }, { x1, y0, u1, v0 }, { x0, y1, u0, v1 }, { x1, y1, u1, v1 } }
+  if op.points then
+    for i, pt in ipairs(op.points) do
+      corners[i][1], corners[i][2] = ox + pt[1] * s, oy + pt[2] * s
+    end
+  end
+  -- Normalized coordinates within this bitmap, for clipping native circular
+  -- ammo art to an angular fraction without changing the sprite's shape.
+  if op.uv_points then
+    for i,uv in ipairs(op.uv_points) do
+      corners[i][3],corners[i][4]=u0+(u1-u0)*uv[1],v0+(v1-v0)*uv[2]
+    end
+  end
   for i, v in ipairs(corners) do
     local a = vb + (i - 1) * 28
     write_f32(a, v[1]); write_f32(a + 4, v[2])
@@ -168,9 +181,27 @@ local function draw_quad(ctx, op, s, ox, oy)
   G.call(ctx, PRIM_END, {})
 end
 
--- The game's 2D pass, then the menu's picture list.
-local failures = 0
-G.hook(PASS_2D, function(ctx)
+-- Used by optional HUD layouts as well as the menu. Preflight before hiding
+-- any native HUD: a valid name alone does not mean its texture is loaded.
+function UI.bitmap_ready(h)
+  if not h or h < 0 or h == 0xFFFF or h >= read_u32(BMP_COUNT) then return false end
+  local sheet = read_u32(BMP_INFO + h * 20)
+  if sheet > 64 then return false end
+  local tex = read_u32(SHEETS + sheet * 8 + 4)
+  local table = read_u32(TEX_TABLE)
+  if tex >= read_u32(TEX_COUNT) or not G.addr_ok(table) then return false end
+  local rec = read_u32(table + tex * 20 + 4)
+  return G.addr_ok(rec) and read_u16(rec + 4) > 0 and read_u16(rec + 6) > 0
+end
+function UI.draw(ctx, list)
+  local s, ox, oy = screen()
+  for _, op in ipairs(list) do
+    if op.text then draw_text(ctx, op, s, ox, oy) else draw_quad(ctx, op, s, ox, oy) end
+  end
+end
+
+-- Called at the HUD pass boundary after native 2D setup, before any HUD.
+function UI.draw_overlay(ctx)
   -- The screen effects (low health, low sprint) first, so the game's HUD,
   -- its notices and subtitles are drawn over them; the menu last, on top.
   local ov = UI.overlay
@@ -181,7 +212,20 @@ G.hook(PASS_2D, function(ctx)
     end)
     if not ok then wml.log("screen effects: drawing failed: " .. tostring(err)); UI.overlay = nil end
   end
+end
+
+-- The game's 2D pass, then the menu's picture list.
+local failures = 0
+function UI.retry()
+  failures = 0
+  UI.ok = true
+end
+G.hook(PASS_2D, function(ctx)
   ctx:call_original()
+  if UI.ok and UI.preview then
+    local ok,err=pcall(UI.draw,ctx,UI.preview)
+    if not ok then UI.preview=nil;wml.log('HUD placement preview: '..tostring(err)) end
+  end
   -- The plain text menu's box (menu.lua sets UI.backdrop): drawn here, in the
   -- game's own frame, so the overlay text lands on top of it.
   local bd = UI.backdrop

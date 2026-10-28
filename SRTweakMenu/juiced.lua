@@ -595,6 +595,7 @@ function J.setup(features)
   local reload_key = key_setting("car_reload_key", "R")
   local save_key = key_setting("quick_save_key", "F12")
   J.reload_key, J.save_key = reload_key, save_key
+  F.save_now = J.save_now   -- (start-up rows made in features.lua, like Nitrous in every vehicle)
 
   F.add_rows("Player", nil, {
     { id = "qol_player", label = "Quality of life", kind = "header" },
@@ -697,6 +698,18 @@ function J.setup(features)
       fmt = fmts, v = S("load_last_save_wait", 3), saved_now = true,
       help = "How long the main menu waits before loading.",
       change = function(ctx, p, v, it) J.save_now(it) end },
+    -- Clothing mods (patch.lua, by itsMJQ): put into the game's files while it
+    -- starts, so they're start-up rows like Skip intro. Placed in Customize.
+    { id = "playa_choice", label = "Playa Choice clothing", kind = "toggle", needs = "none", v = S("playa_choice", false), saved_now = true,
+      help = "CommyGT's Playa Choice, its clothing only: necklace fixes, cropped and untucked undershirts, the Parted Afro, the Light Silver Braided Belt, the Cross Pendant and MP chains, and every unlockable in the stores. Prices and respect stay the game's. From the next start.",
+      change = startup_change },
+    { id = "work_boots", label = "Work boots", kind = "choice", needs = "none", options = { "Off", "Own shoe", "Replace Hiking Boots" },
+      v = ({ off = 1, duplicate = 2, replace = 3 })[tostring(S("work_boots", "off")):lower()] or 1, saved_now = true,
+      help = "The Timberland boots mod as Ultor Unlimited Work Boots: a shoe of their own beside the Hiking Boots, or the Hiking Boots look like them. From the next start.",
+      change = function(ctx, p, v, it) J.save_now(it); return "Work boots: " .. it.options[it.v] .. " from the next start" end },
+    { id = "sr2_hair", label = "Saints Row 2 hair", kind = "toggle", needs = "none", v = S("sr2_hair", false), saved_now = true,
+      help = "Medium Parted 02 from Saints Row 2, in place of Flat Top, Lightning (that hairstyle's files and name). From the next start.",
+      change = startup_change },
     { id = "quick_save", label = "Quick save (" .. (save_key ~= "" and save_key or "no key") .. ")", kind = "toggle", needs = "none",
       v = S("quick_save", false),
       help = "Press " .. (save_key ~= "" and save_key or "the quick_save_key in mod.ini") .. " to save while free-roaming. Keeps only your newest quick save." },
