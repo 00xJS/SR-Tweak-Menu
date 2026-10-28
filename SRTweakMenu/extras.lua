@@ -557,7 +557,7 @@ function E.setup(features)
         return string.format("Given: %d x %s", n, item[2])
       end },
     { id = "give_item_count", label = "How many", kind = "value", needs = "none", default = 1, min = 1, max = 10, step = 1,
-      v = 1, oneshot = true, fmt = fmtint, help = "How many of the item Give item hands you." },
+      v = 1, oneshot = true, nosave = true, fmt = fmtint, help = "How many of the item Give item hands you." },
   })
 
   local fp_default = math.floor(fp_fov + 0.5)

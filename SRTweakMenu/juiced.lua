@@ -710,18 +710,26 @@ function J.setup(features)
 end
 
 -- ================================================================ saved tweaks
--- "Save tweaks for next time" writes every row that can start from a saved
--- value to saved_tweaks.ini; it's read back while the mod starts. A row
--- can when its value alone does the work: toggles and sliders the update
--- loop applies (update, flag bits, a byte or float) or that hooks and
--- other code read (no `change` of their own), and rows marked saved_now.
--- One-shot rows (notoriety) and rows that act only when changed are left
--- out: setting their value alone wouldn't do what the change did.
+-- "Save tweaks for next time" writes every setting to saved_tweaks.ini: each
+-- switch and slider, and the choices that stay set (weather, filter, aim
+-- style ...) - the rows Show active tweaks counts. It's read back while the
+-- mod starts. Most rows work from their value alone; the ones whose change
+-- does the work (the weather, Hide HUD, the filter ...) have it run once
+-- you're playing. Not saved: live readouts (notoriety, the time of day, the
+-- aim add-ons' own numbers), rows kept elsewhere (movement, menu look, first
+-- person), pickers (spawn this, give that) and the free camera.
 local SAVED = wml.mod_folder .. "/saved_tweaks.ini"
 
 local function can_save(it)
-  if not it.id or it.nosave or it.oneshot then return false end
-  if it.kind ~= "toggle" and it.kind ~= "value" then return false end
+  if not it.id or it.nosave or it.live or it.retired or it.momentary then return false end
+  if it.kind == "toggle" or it.kind == "value" then return true end
+  if it.kind ~= "choice" and it.kind ~= "list" then return false end
+  return not it.id:find("^move_part_") and require("defaults").game_default(it) ~= nil
+end
+
+-- Rows the update loop, hooks and other code read: their value is enough.
+local function works_alone(it)
+  if it.kind == "list" and it.run then return false end
   if it.saved_now or it.keep_saved or it.id == "master" or not it.change then return true end
   return (it.update or it.pbits or it.p212 or it.vbits_a or it.vbits_b or it.byte or it.bits or it.float) ~= nil
 end
@@ -751,9 +759,30 @@ local function write_saved(saved)
   return true
 end
 
+-- Choices are saved by name, so a list that gains an entry keeps its pick.
+local function option_names(it)
+  if it.kind == "choice" then return it.options end
+  local names = {}
+  for i, e in ipairs(it.items) do names[i] = e[2] end
+  return names
+end
+
 local function value_text(it)
   if it.kind == "toggle" then return tostring(it.v) end
+  if it.kind == "choice" or it.kind == "list" then return tostring(option_names(it)[it.v] or it.v) end
   return string.format("%.4g", it.v)
+end
+
+local function value_of(it, text)
+  if it.kind == "toggle" then return text == "true" end
+  if it.kind == "choice" or it.kind == "list" then
+    local names = option_names(it)
+    for i, name in ipairs(names) do if tostring(name) == text then return i end end
+    local i = math.tointeger(tonumber(text))
+    return (i and i >= 1 and i <= #names) and i or nil
+  end
+  local v = tonumber(text)
+  return v and math.max(it.min, math.min(it.max, v))
 end
 
 function J.save_all()
@@ -783,17 +812,17 @@ function J.forget_saved()
 end
 
 -- Puts saved values on the rows; called once at start, before J.install.
+-- Rows whose change does the work wait in J.pending for apply_saved.
+J.pending = {}
 function J.load_saved()
   local saved, n = read_saved(), 0
   for id, text in pairs(saved) do
     local it = F.items[id]
-    if it and can_save(it) then
-      if it.kind == "toggle" then it.v = text == "true"
-      else
-        local v = tonumber(text)
-        if v then it.v = math.max(it.min, math.min(it.max, v)) end
-      end
-      if id == "master" then F.enabled = it.v end
+    local v = it and can_save(it) and value_of(it, text)
+    if v ~= nil and (v ~= false or it.kind == "toggle") then
+      it.v = v
+      if id == "master" then F.enabled = v end
+      if not works_alone(it) and v ~= require("defaults").game_default(it) then J.pending[#J.pending + 1] = it end
       n = n + 1
     end
   end
@@ -913,9 +942,28 @@ function J.before(ctx)
   cutscene_before(ctx)
 end
 
+-- Saved rows whose change does the work (the weather, Hide HUD, the filter
+-- ...): run once you've been playing a couple of seconds, as if picked.
+local settled = 0
+local function apply_saved(ctx)
+  if #J.pending == 0 or not F.enabled then return end
+  local p = G.player()
+  if p == 0 or not G.playing(p) or G.in_cutscene() or G.screen_up() then settled = 0 return end
+  settled = settled + 1
+  if settled < 100 then return end
+  local v = G.vehicle_object(p) or 0
+  for _, it in ipairs(J.pending) do
+    local ok, err = pcall(it.kind == "list" and it.run or it.change, ctx, p, v, it)
+    if not ok then wml.log("saved tweaks: " .. it.label .. " couldn't be put back: " .. tostring(err)) end
+  end
+  log("juiced: " .. #J.pending .. " saved tweaks put on in game")
+  J.pending = {}
+end
+
 -- After the game's update (and the menu's own rows).
 function J.after(ctx)
   if game_state() == STATE_LEGAL then return end
+  apply_saved(ctx)
   if J.old_juiced and G.player() ~= 0 then
     J.old_juiced = false
     G.hud("Untick the old SR Juiced mod in the mod loader: SR Tweak Menu has it built in")

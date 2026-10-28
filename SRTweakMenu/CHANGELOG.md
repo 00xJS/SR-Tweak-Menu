@@ -1,5 +1,22 @@
 # SR Tweak Menu - changes
 
+## 2.6.4
+
+- **Save tweaks for next time** saves every setting now, the same ones
+  Show active tweaks lists. Before, it missed the choices (weather, filter,
+  render mode, aim style and button, Precise Aim turning, free camera mode,
+  character dialogue, animation fallback, cloth physics, punch blast, the
+  weapon D-pad and tap), Hide HUD, Letterbox, Auto-teleport to waypoint,
+  and the sliders that go with a switch (run speed, high jump boost, the
+  shoulder camera's offset and closeness, money gun cash, money rain rate
+  and bill, bounce strength, spin damping, repeat interval).
+- Rows whose change does the work (the weather, Hide HUD, the filter ...)
+  are put back once you've been playing a couple of seconds after loading.
+- Choices are saved by name, so a list that gains an entry keeps your pick.
+- Not saved, as before: live readouts (notoriety, time of day), the free
+  camera itself, and pickers like Give item. Movement and the menu look
+  keep saving to their own files as you pick them.
+
 ## 2.6.3
 
 - Fixed the menu's game pictures (the Menu background box, the game style

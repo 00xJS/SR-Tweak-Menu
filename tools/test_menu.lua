@@ -289,13 +289,71 @@ do
   J.save_all()
   local sf = io.open(TMP .. "/saved_tweaks.ini"); local text = sf:read("a"); sf:close()
   assert(text:find("crouch_moving = true", 1, true) and text:find("fov = 1.35", 1, true) and text:find("god = true", 1, true), "saved_tweaks.ini incomplete")
-  assert(not text:find("wanted_police", 1, true) and not text:find("hide_hud", 1, true), "one-shot and change-only rows must not be saved")
+  assert(not text:find("\nwanted_police =", 1, true) and not text:find("\nfree_cam =", 1, true) and not text:find("\ngive_item_count =", 1, true),
+    "live readouts, the free camera and pickers aren't saved")
   F.items.god.v = false; F.items.fov.v = 1.0; F.items.crouch_moving.v = false
   J.load_saved()
   assert(F.items.god.v and math.abs(F.items.fov.v - 1.35) < 1e-9 and F.items.crouch_moving.v, "saved tweaks not read back")
   assert(J.forget_saved():find("forgotten") and not io.open(TMP .. "/saved_tweaks.ini"), "forget didn't remove the file")
   F.items.god.v, F.items.fov.v = false, 1.2
   update(2)
+
+  -- Every setting Show active tweaks would list is saved and read back: each one changed from the game's own,
+  -- saved, put back to the game's own, then loaded. (Movement is saved to its own file as it's picked; free
+  -- camera in cars is left off, as with it on the two car cameras it replaces start off.)
+  local D = require("defaults")
+  local before, want, n = {}, {}, 0
+  local car_free_cam = F.items.car_free_cam.v
+  F.items.car_free_cam.v = false
+  for id, it in pairs(F.items) do
+    local def = D.game_default(it)
+    before[id] = it.v
+    if def ~= nil and not it.momentary and not id:find("^move_part_") and id ~= "car_free_cam" then
+      local w
+      if it.kind == "toggle" then w = true
+      elseif it.kind == "value" then
+        local step = it.step or 0.1
+        w = def + step <= it.max and def + step or def - step
+      else
+        local count = it.kind == "choice" and #it.options or #it.items
+        if count >= 2 then w = def == 1 and 2 or 1 end
+      end
+      if w ~= nil then it.v = w; if D.changed(it) then want[id] = w; n = n + 1 end end
+    end
+  end
+  J.save_all()
+  for id in pairs(want) do F.items[id].v = D.game_default(F.items[id]) end
+  J.pending = {}
+  J.load_saved()
+  local missed = {}
+  for id, w in pairs(want) do
+    local v = F.items[id].v
+    local same = type(w) == "number" and math.abs(v - w) <= math.abs(w) * 1e-3 + 1e-6 or v == w
+    if not same then missed[#missed + 1] = id .. " (" .. tostring(v) .. ", wanted " .. tostring(w) .. ")" end
+  end
+  table.sort(missed)
+  assert(#missed == 0, "saved tweaks missed: " .. table.concat(missed, ", "))
+  assert(n > 100, "settings checked: " .. n)
+  for id, it in pairs(F.items) do it.v = before[id] end
+  F.items.car_free_cam.v = car_free_cam
+  J.pending = {}
+  J.forget_saved()
+
+  -- Rows whose change does the work (the weather, Hide HUD, the filter) are put on once you're playing.
+  local sf2 = io.open(TMP .. "/saved_tweaks.ini", "w")
+  sf2:write("hide_hud = true\nweather = ", F.items.weather.options[3], "\nfilter = ", F.items.filter.items[2][2], "\n")
+  sf2:close()
+  J.load_saved()
+  assert(F.items.hide_hud.v and F.items.weather.v == 3 and F.items.filter.v == 2 and #J.pending == 3, "saved choices read back by name")
+  local from = #scripts
+  update(120)
+  local put = table.concat(scripts, "\n", from + 1)
+  assert(#J.pending == 0 and put:find("hud_hide()", 1, true) and put:find("set_weather(1, true)", 1, true),
+    "saved rows put on in game: " .. put)
+  F.items.hide_hud.v, F.items.weather.v, F.items.filter.v = false, 1, 1
+  J.forget_saved()
+  update(2)
+  print("saved tweaks: " .. n .. " settings saved and read back OK")
   print("quality of life rows: written, put back, saved and read back OK")
 end
 

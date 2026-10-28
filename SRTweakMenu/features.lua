@@ -1087,7 +1087,7 @@ category("Visual", {
   { id = "filter", label = "Filter", kind = "list", needs = "none", items = FILTERS,
     help = "",
     run = function(ctx, p, v, it) return F.set_filter(FILTERS[it.v]) end },
-  { id = "free_cam", label = "Free camera", kind = "toggle", needs = "player",
+  { id = "free_cam", label = "Free camera", kind = "toggle", needs = "player", momentary = true,
     help = "Move: WASD / left stick. Look: mouse / right stick. Up / down: E / Q or triggers. Zoom: Z / X or LB / RB. Faster: Shift. A / Enter plays from this shot.",
     change = function(ctx, p, v, it)
       if it.v then
