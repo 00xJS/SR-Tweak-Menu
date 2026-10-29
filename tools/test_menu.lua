@@ -851,6 +851,19 @@ do
   assert((read_u32(P + 216) & 0x00100000) ~= 0, "god mode should set the invulnerability bit")
   F.items.god.v = false; update(1)
   assert((read_u32(P + 216) & 0x00100000) == 0, "god mode off should clear the invulnerability bit")
+  -- A teleport shield never leaves god mode behind, and invulnerability
+  -- the menu didn't set (a mission's) is left on when the shield ends.
+  local INV = 0x00100000
+  F.shield("waypoint", true, P)
+  assert((read_u32(P + 216) & INV) ~= 0, "waypoint shield should set the bit")
+  F.shield("waypoint", false, P); update(1)
+  assert((read_u32(P + 216) & INV) == 0, "waypoint shield must not leave god mode on")
+  F.shield("waypoint", true, P); update(F.shields.waypoint - F.tick + 1)
+  assert(F.shields.waypoint == nil and (read_u32(P + 216) & INV) == 0, "a forgotten shield ends at its limit")
+  write_u32(P + 216, read_u32(P + 216) | INV); update(1)   -- (a mission makes you invulnerable)
+  F.shield("waypoint", true, P); F.shield("waypoint", false, P); update(1)
+  assert((read_u32(P + 216) & INV) ~= 0, "the mission's invulnerability should stay after a shield")
+  write_u32(P + 216, read_u32(P + 216) & ~INV & 0xFFFFFFFF); update(1)
   local cheat_name, cheat_rounds
   FAKE[0x821F56C0] = function(ctx) cheat_name = read_cstr(read_u32(ctx.regs[3])); cheat_rounds = read_u32(ctx.regs[3] + 4) end
   for i, w in ipairs(F.items.give_weapon.items) do if w[2] == "NR4" then F.items.give_weapon.v = i end end

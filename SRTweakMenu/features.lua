@@ -7725,8 +7725,9 @@ function F.sync_invulnerable(p)
     F.zero_factor = nil
   end
   if want then
-    if not has then G.player_flag(p, G.FLAG.INVULNERABLE, true) end
-    we_set = true
+    -- (already on - a mission's, the trainer's: it stays theirs, and isn't
+    -- taken off when the shield ends)
+    if not has then G.player_flag(p, G.FLAG.INVULNERABLE, true); we_set = true end
   elseif we_set then
     if has then G.player_flag(p, G.FLAG.INVULNERABLE, false) end
     we_set = false

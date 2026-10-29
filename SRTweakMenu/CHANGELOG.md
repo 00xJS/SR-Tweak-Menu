@@ -1,5 +1,23 @@
 # SR Tweak Menu - changes
 
+## 2.7.1
+
+- God mode after a teleport (reported with teleport to waypoint): the menu's
+  short shields (waypoint teleport, soft landing, explosive punch) now only
+  take off invulnerability the menu itself put on. Before, a shield that
+  started while you were already invulnerable (a mission, the trainer's God
+  Mode) took that over and cleared it when it ended. The menu's own waypoint
+  teleport already let its shield go every time; the menu test now checks
+  that, the 30-second limit, and that a mission's invulnerability stays.
+- The standalone Teleport to Waypoint mod (0.2) had the old bug the menu
+  fixed: a pause screen or load during the landing forgot the shield
+  instead of taking it off, leaving God Mode on for good, and its end could
+  switch God Mode back on. Both fixed there.
+- Checked the other mods in the folder against the menu: the shared hooks
+  chain (each passes to the next), table edits stack (each mod reads the
+  last one's), and the menu stands aside for MoreHomies, Teleport to
+  Waypoint and SRJuiced when they're ticked.
+
 ## 2.7.0 - itsMJQ's 1.9.12 to 2.6.6 merged in
 
 Everything itsMJQ added since 1.9.11, put into this menu's own layout. The
