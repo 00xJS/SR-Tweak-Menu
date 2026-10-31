@@ -496,6 +496,7 @@ local R,D=require('hud_reactions'),require('hud_death')
 local death={}
 local current, scope
 local function enabled()
+  if H.unavailable then return false end
   return H.enabled() and not H.failed and UI.ok and G.player() ~= 0
     and not G.in_front_end() and not G.in_cutscene() and not G.screen_up()
 end
@@ -572,7 +573,7 @@ local function flush(ctx)
     wml.log("Tribal HUD: drawing failed; native HUD restored on the next frame: " .. tostring(why))
   end
 end
-wml.hook(H.ADDR.pass, function(ctx)
+G.hook(H.ADDR.pass, function(ctx)
   UI.draw_overlay(ctx)
   current, scope = nil, nil
   -- Switching off restores the native path immediately, including after a
@@ -597,7 +598,7 @@ wml.hook(H.ADDR.pass, function(ctx)
   current, scope = nil, nil
 end)
 for _, name in ipairs({ "health", "respect", "sprint", "icons", "weapon" }) do
-  wml.hook(H.ADDR[name], function(ctx)
+  G.hook(H.ADDR[name], function(ctx)
     if not current then ctx:call_original(); return end
     if name == "health" and ctx:r(3) ~= current.player then
       -- Native spectator/remote-control HUDs may draw a different actor.
@@ -624,7 +625,7 @@ for _, name in ipairs({ "health", "respect", "sprint", "icons", "weapon" }) do
     scope = previous
   end)
 end
-wml.hook(H.ADDR.bitmap, function(ctx)
+G.hook(H.ADDR.bitmap, function(ctx)
   if W.bitmap(ctx) then return end
   if current and scope and N.active() then N.capture(ctx,"bitmap",scope,current) end
   if current and scope and not N.active() then
@@ -633,17 +634,17 @@ wml.hook(H.ADDR.bitmap, function(ctx)
   end
   ctx:call_original()
 end)
-wml.hook(H.ADDR.arc, function(ctx)
+G.hook(H.ADDR.arc, function(ctx)
   if W.arc(ctx) then return end
   if current and scope and N.active() then N.capture(ctx,"arc",scope,current);N.glow(ctx,scope,current) end
   if current and scope and not N.active() then return end
   ctx:call_original()
 end)
-wml.hook(H.ADDR.respect_arc, function(ctx)
+G.hook(H.ADDR.respect_arc, function(ctx)
   if current and scope and not N.active() then return end
   ctx:call_original()
 end)
-wml.hook(H.ADDR.respect_text, function(ctx)
+G.hook(H.ADDR.respect_text, function(ctx)
   if current and scope == "respect" and not N.active() then
     current.respect_text = native_text(ctx:r(3))
     current.respect_seen = current.respect_text ~= nil
@@ -651,7 +652,7 @@ wml.hook(H.ADDR.respect_text, function(ctx)
   end
   ctx:call_original()
 end)
-wml.hook(H.ADDR.text, function(ctx)
+G.hook(H.ADDR.text, function(ctx)
   if current and N.active() and scope=="weapon" then
     current.ammo_text=native_text(ctx:r(5))
     N.ammo(ctx,current,function() ctx:call_original() end);return
@@ -663,11 +664,18 @@ wml.hook(H.ADDR.text, function(ctx)
   end
   ctx:call_original()
 end)
-wml.hook(H.ADDR.after_cluster, function(ctx)
+G.hook(H.ADDR.after_cluster, function(ctx)
   -- This is the next native call after the five cluster pieces. Draw before
   -- it so notifications, followers, prompts and the tweak menu remain above.
   flush(ctx)
   ctx:call_original()
 end)
 require("hud_layout").enabled=function() return current~=nil and enabled() end
+-- The hooks the HUD can't work without: with one refused (which ones depends
+-- on the build of saintsrow.exe) it would hide the game's HUD and draw
+-- nothing, so it stays off and the game's own HUD stays up.
+for _,a in pairs(H.ADDR) do
+  if G.broken[a] then H.unavailable=string.format("%08X",a) end
+end
+if H.unavailable then wml.log("HUD styles off: the game refused the hook at "..H.unavailable) end
 return H

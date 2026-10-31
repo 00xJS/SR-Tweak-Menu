@@ -18,6 +18,10 @@ An in-game cheat menu for Saints Reborn
    - **Xbox controller:** hold RB and press D-pad Down
    - **PlayStation controller:** hold R1 and press D-pad Down
 
+Updating: delete the old `SRTweakMenu` folder first, so files from an older
+version or another build aren't loaded with the new one. Keep `saved_tweaks.ini`
+and your other saved `.txt` files if you want your setup back.
+
 ## Controls
 
 | | Keyboard | Xbox | PlayStation |

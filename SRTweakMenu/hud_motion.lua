@@ -165,7 +165,7 @@ function M.tick(player,now)
  M.sample({player=player,health=rf(player+G.P.HEALTH),x=rf(player+20),y=rf(player+24),z=rf(player+28),
   vy=vy,vehicle=v,speed=speed,grounded=grounded,ragdoll=ragdoll},now)
 end
-wml.hook(M.ADDR.car,function(ctx)
+G.hook(M.ADDR.car,function(ctx)
  local p=G.player();local previous=M.car_context
  local match=p~=0 and r32(p+68)==(ctx:r(3)&0xFFFFFFFF) and M.enabled()
  local before,ragdoll

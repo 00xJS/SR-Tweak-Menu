@@ -82,7 +82,7 @@ function A.private_native(ctx,p,mesh)
  return #out>0 and out or nil
 end
 function A.install(E)
- wml.hook(A.draw,function(ctx)
+ G.hook(A.draw,function(ctx)
   local p=ctx:r(4)&0xFFFFFFFF
   local descriptor=ctx:r(5)&0xFFFFFFFF
   local commands,imported_mesh

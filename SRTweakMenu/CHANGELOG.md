@@ -1,5 +1,16 @@
 # SR Tweak Menu - changes
 
+## 2.7.2
+
+- Fixed a crash on PCs whose saintsrow.exe refuses certain hooks (reported at
+  0x82138AE8 and 0x822E2848). The HUD modules merged in 2.7.0 hooked without
+  the protection every other hook has had since 2.5.1, so one refusal stopped
+  the whole menu loading, F5 included. The homie heads then retried loading
+  the HUD layout every frame, each try adding another hook, until the game
+  crashed. Now a refused hook switches off only what needs it.
+- HUD styles stays off, with the game's own HUD up, if the game refuses a hook
+  it can't work without, and says so in the menu and wml.log.
+
 ## 2.7.1
 
 - God mode after a teleport (reported with teleport to waypoint): the menu's

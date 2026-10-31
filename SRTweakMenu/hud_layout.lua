@@ -58,7 +58,7 @@ function L.preview(row,on)
  end
  UI.preview=#ops>0 and ops or nil
 end
-wml.hook(L.ADDR.money,function(ctx)
+G.hook(L.ADDR.money,function(ctx)
  if not L.enabled() or L.failed then ctx:call_original();return end
  L.money=true;L.money_seen=false
  local ok,err=pcall(function()
@@ -76,7 +76,7 @@ wml.hook(L.ADDR.money,function(ctx)
  L.money=false
  if not ok then L.failed=true;wml.log('SR22 money layout: '..tostring(err)) end
 end)
-wml.hook(L.ADDR.money_text,function(ctx)
+G.hook(L.ADDR.money_text,function(ctx)
  if not L.money then ctx:call_original();return end
  L.money_seen=true
  local original={ctx:r(3),ctx:r(4),ctx:f(1),ctx:f(2)}

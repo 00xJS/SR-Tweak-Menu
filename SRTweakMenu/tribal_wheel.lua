@@ -138,7 +138,7 @@ function W.arc(ctx)
   end
   return true
 end
-wml.hook(W.ADDR.slot,function(ctx)
+G.hook(W.ADDR.slot,function(ctx)
   if not active then ctx:call_original(); return end
   local i=ctx:r(3)&0xFFFFFFFF
   if i>7 then ctx:call_original(); return end
@@ -149,7 +149,7 @@ wml.hook(W.ADDR.slot,function(ctx)
 end)
 -- Shared with the existing follower-arrow hook at the same native draw call.
 G.radial_bitmap_hidden=function() return active~=nil end
-wml.hook(W.ADDR.close,function(ctx)
+G.hook(W.ADDR.close,function(ctx)
   local p=W.open_player
   W.open_player=nil
   ctx:call_original()
@@ -161,7 +161,7 @@ wml.hook(W.ADDR.close,function(ctx)
   end
   W.hover,W.clock,W.pose,W.last_sound_key=nil,nil,nil,nil
 end)
-wml.hook(W.ADDR.draw,function(ctx)
+G.hook(W.ADDR.draw,function(ctx)
   if not W.enabled() then W.failed=false; W.hover=nil; W.pose=nil; W.open_player=nil; W.last_sound_key=nil end
   if not W.enabled() or W.failed or not UI.ready() or G.player()==0
     or G.in_cutscene() or G.screen_up() or G.in_front_end()

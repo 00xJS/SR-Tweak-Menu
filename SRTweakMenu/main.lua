@@ -45,6 +45,12 @@ local HOMIES = require("homies")
 local FREECAM = require("freecam")
 require("tribal_hud").enabled = function() return F.on("tribal_hud") or (F.enabled and require("hud_settings").preview ~= nil) end
 require("tribal_hud").input = function() return not MENU.is_open() and FREECAM.pad or {} end
+F.items.tribal_hud.change = function(ctx, p, v, it)
+  if it.v and require("tribal_hud").unavailable then
+    it.v = false
+    return "HUD styles can't run on this PC: see wml.log"
+  end
+end
 local ADDONS = require("addons")
 
 local TELEPORT = 0x8243E6F8  -- (player, position*, 0, nav node or -1)

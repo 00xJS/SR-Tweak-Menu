@@ -72,7 +72,7 @@ G.hud_fire=function(ctx)
  ctx:call_original()
  if bullet and kind and before>0 and r32(ammo+16)<before then R.emit(kind,os.clock()) end
 end
-wml.hook(R.ADDR.projectile,function(ctx)
+G.hook(R.ADDR.projectile,function(ctx)
  local owner,info=ctx:r(3)&0xFFFFFFFF,ctx:r(4)&0xFFFFFFFF
  local kind=R.names[name(info)];local p=G.player()
  local match=p~=0 and owner==r32(p+68)
@@ -83,7 +83,7 @@ wml.hook(R.ADDR.projectile,function(ctx)
   R.emit(kind,os.clock())
  end
 end)
-wml.hook(R.ADDR.explosion,function(ctx)
+G.hook(R.ADDR.explosion,function(ctx)
  local definition,pos=ctx:r(3)&0xFFFFFFFF,ctx:r(7)&0xFFFFFFFF
  local event
  if running() and G.pointer_ok(definition) and G.pointer_ok(pos) then
@@ -138,7 +138,7 @@ function R.audio_updated(now)
   end
  end
 end
-wml.hook(R.ADDR.audio_update,function(ctx)
+G.hook(R.ADDR.audio_update,function(ctx)
  ctx:call_original();R.audio_updated(os.clock())
 end)
 return R

@@ -35,6 +35,9 @@ local PARTY_ADD   = 0x82483828  -- (player, npc, forced) -> added?
 local HUD_SLOT    = 0x822D0188  -- (npc) -> HUD head slot or -1
 local HUD_ADD     = 0x822D1418  -- (npc) registers the head
 local HUD_HEADS   = 0x822DEA08  -- (player, f1 alpha) draws follower heads
+-- (loaded once, here: a failed require in the hook would run again every frame)
+local LAYOUT_OK, LAYOUT = pcall(require, "hud_layout")
+if not LAYOUT_OK then wml.log("homies: HUD layout off: " .. tostring(LAYOUT)) end
 H.DISMISS_ALL     = 0x82483B78  -- (player) dismisses the whole party
 local COUNT, LIST, MODE = 2096, 2100, 4012
 local ENTRY, LIST_MAX = 20, 10
@@ -147,7 +150,7 @@ if not H.standalone then
       for j = 0, 2 do write_u32(SLOT_BASE + 16 * j, (to_int(saved_x[j + 1]) + span * pass) & 0xFFFFFFFF) end
       fade_extra[pass] = fade_extra[pass] or {}
       for i = 0, FADE_BYTES - 4, 4 do write_u32(FADE_BASE + i, fade_extra[pass][i] or 0) end
-      require("hud_layout").homie_pass(pass)
+      if LAYOUT_OK then LAYOUT.homie_pass(pass) end
       hud_pass = true
       ctx:set_r(3, p); ctx:set_f(1, alpha)
       local ok,why=pcall(function() ctx:call_original() end)
@@ -169,9 +172,10 @@ end
 -- One owner for this native hook: relocation wraps every normal/extra pass.
 -- More Homies can still supply its own native passes when enabled separately.
 G.hook(HUD_HEADS,function(ctx)
-  require("hud_layout").draw_homies(ctx,function()
+  local function draw()
     if H.draw_heads then H.draw_heads(ctx) else ctx:call_original() end
-  end)
+  end
+  if LAYOUT_OK then LAYOUT.draw_homies(ctx, draw) else draw() end
 end)
 
 -- Homies following you now.

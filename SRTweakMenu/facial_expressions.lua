@@ -71,12 +71,12 @@ function E.active(ctx,p)
  if (G.call(ctx,E.ADDR.incapacitated,{p})&255)~=0 then return nil end
  return E.resolve(ctx,desired())
 end
-wml.hook(E.ADDR.get,function(ctx)
+G.hook(E.ADDR.get,function(ctx)
  local p=ctx:r(3)&0xFFFFFFFF
  local id=E.active(ctx,p)
  if id then ctx:set_r(3,id==-2 and 0xFFFFFFFF or id) else ctx:call_original() end
 end)
-wml.hook(E.ADDR.build,function(ctx)
+G.hook(E.ADDR.build,function(ctx)
  local p=ctx:r(3)&0xFFFFFFFF
  local id=E.active(ctx,p)
  if id==-2 then
