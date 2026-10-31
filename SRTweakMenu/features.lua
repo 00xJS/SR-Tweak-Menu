@@ -894,6 +894,14 @@ F.add_rows("Weapons", "weapon_tap", {
       local M = F.addon.precise
       if M and M.set_aim_sens then M.set_aim_sens(it.v) save_addon("precise", "aim_sensitivity", string.format("%.2f", it.v)) end
     end },
+  { id = "precise_stick_deadzone", label = "Precise Aim stick deadzone", kind = "value", needs = "none", default = 0.24, min = 0, max = 0.5, step = 0.02,
+    fmt = fmt2, live = true, oneshot = true,
+    read = function() local M = F.addon.precise return M and M.look_deadzone and M.look_deadzone() or nil end,
+    help = "How far the right stick moves before the camera turns. 0.24 is the game's own. Raise it if the camera drifts, lower it for a lighter touch.",
+    change = function(ctx, p, v, it)
+      local M = F.addon.precise
+      if M and M.set_look_deadzone then M.set_look_deadzone(it.v) save_addon("precise", "pad_look_deadzone", string.format("%.2f", it.v)) end
+    end },
   { id = "fine_aim_turn", label = "Fine Aim aim turn speed", kind = "value", needs = "none", default = 0.4, min = 0.05, max = 1.0, step = 0.05,
     fmt = fmtx, live = true, oneshot = true, read = fine_value("sensitivity"), change = fine_set("sensitivity", "sensitivity_multiplier"),
     help = "How fast you turn while aiming with Fine Aim (x1 = as fast as not aiming)." },
@@ -7975,7 +7983,7 @@ do
 end
 -- Control preferences, set once, live in Settings rather than with the cheats.
 local MOVE_TO = { camera_turn = "Settings", aim_button = "Settings", precise_turning = "Settings",
-  precise_aim_turn = "Settings", fine_aim_turn = "Settings", weapon_dpad = "Settings", weapon_tap = "Settings" }
+  precise_aim_turn = "Settings", precise_stick_deadzone = "Settings", fine_aim_turn = "Settings", weapon_dpad = "Settings", weapon_tap = "Settings" }
 do
   local by_name = {}
   for _, cat in ipairs(F.categories) do by_name[cat.name] = cat end
@@ -7989,7 +7997,7 @@ do
   end
   local settings = by_name.Settings
   if settings then
-    local CONTROLS = { "camera_turn", "aim_button", "precise_turning", "precise_aim_turn", "fine_aim_turn", "weapon_dpad", "weapon_tap" }
+    local CONTROLS = { "camera_turn", "aim_button", "precise_turning", "precise_aim_turn", "precise_stick_deadzone", "fine_aim_turn", "weapon_dpad", "weapon_tap" }
     local rows, keep, inside = {}, {}, {}
     for _, id in ipairs(CONTROLS) do inside[id] = true end
     for _, it in ipairs(settings.items) do if inside[it.id] then rows[#rows + 1] = it else keep[#keep + 1] = it end end
@@ -8012,6 +8020,7 @@ do
   end
   if F.items.precise_turning then F.items.precise_turning.hidden = style_is(2) end
   if F.items.precise_aim_turn then F.items.precise_aim_turn.hidden = style_is(2) end
+  if F.items.precise_stick_deadzone then F.items.precise_stick_deadzone.hidden = style_is(2) end
   if F.items.aim_button then
     F.items.aim_button.hidden = function() return not (F.items.aim_style.v == 2 or F.items.aim_style.v == 3) end
   end

@@ -183,6 +183,7 @@ local S = {
   aim_sens       = num("aim_sensitivity", 1.0, 0.1, 3.0),
   zoom_match     = on(setting("aim_zoom_match", 1)),
   pad_dz         = num("pad_deadzone", 0.08, 0, 0.5),
+  look_dz        = num("pad_look_deadzone", 0.24, 0, 0.5),
   pad_outer_dz   = num("pad_outer_deadzone", 0.03, 0, 0.3),
   pad_game_dz    = 0.24,
 }
@@ -1152,11 +1153,10 @@ local function shape_stick(addr, scale)
   local rx, ry = s16(wml.read_u16(addr + 12) or 0), s16(wml.read_u16(addr + 14) or 0)
   if rx == 0 and ry == 0 then return false end
   local gdz = S.pad_game_dz > 0 and game_deadzone() or 0
-  if gdz <= 0 and scale >= 1 then return false end
   local m = math.sqrt(rx * rx + ry * ry) / 32767
   local nx, ny = 0, 0
-  if m > S.pad_dz then
-    local t = math.min(1, (m - S.pad_dz) / (1 - S.pad_dz)) * scale
+  if m > S.look_dz then
+    local t = math.min(1, (m - S.look_dz) / (1 - S.look_dz)) * scale
     local dx, dy = rx / 32767 / m, ry / 32767 / m
     local out = (gdz + t * (1 - gdz)) / math.max(math.abs(dx), math.abs(dy))
     nx = clamp(math.floor(dx * out * 32767 + 0.5), -32767, 32767)
@@ -1292,8 +1292,8 @@ local function stick_turn(dt)
   local m = math.sqrt(x * x + y * y)
   local t = 0.0
   st.turn_x, st.turn_y = 0.0, 0.0
-  if m > S.pad_dz then
-    t = math.min(1, (m - S.pad_dz) / math.max(0.05, 1 - S.pad_dz - S.pad_outer_dz))
+  if m > S.look_dz then
+    t = math.min(1, (m - S.look_dz) / math.max(0.05, 1 - S.look_dz - S.pad_outer_dz))
     local mag = t ^ S.pad_curve
     st.turn_x, st.turn_y = x / m * mag, y / m * mag
   end
@@ -1813,4 +1813,8 @@ if type(wml.srtm) == "table" then
   end
   function M.aim_sens() return S.aim_sens end
   function M.set_aim_sens(v) S.aim_sens = clamp(v, 0.1, 3.0) end
+  -- The menu's right stick deadzone row (pad_look_deadzone).
+  function M.look_deadzone() return S.look_dz end
+  function M.set_look_deadzone(v) S.look_dz = clamp(v, 0, 0.5) end
+  M.shape_stick = shape_stick
 end

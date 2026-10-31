@@ -475,22 +475,23 @@ end
 -- taken back off, so the game's camera keeps easing from its own place.
 -- Only the normal on-foot presets (6, 15 to 18; not 12, aiming, which the
 -- aim add-ons handle, nor 13, swimming), the follow camera (type 0), not in
--- first person or the menu's free and fitting-room cameras. The move isn't
--- tested against walls: standing with a wall close on that side the camera
--- can look through it.
+-- first person, the menu's free and fitting-room cameras or a store screen
+-- (stores and wardrobes keep the follow camera; it comes back on leaving).
+-- The move isn't tested against walls: standing with a wall close on that
+-- side the camera can look through it.
 local CAMERA_PRESET = 0x827DA15C
 local SHOULDER_PRESETS = { [6] = true, [15] = true, [16] = true, [17] = true, [18] = true }
 local CAM_RIGHT, CAM_FORWARD = 80, 104
 local shoulder_last = nil   -- the move applied after the last update { dx, dy, dz }
 local shoulder_blend = 0    -- 0..1, eased in and out so aiming, cars and cutscenes don't snap
 local FREECAM = require("freecam")
-local function shoulder_wanted()
+local function shoulder_wanted(ctx)
   if not F.enabled or not F.items.shoulder_cam.v then return false end
   local p = G.player()
   if p == 0 or G.vehicle_object(p) or G.in_cutscene() then return false end
   if read_u32(G.CAMERA) ~= 0 or not SHOULDER_PRESETS[read_u32(CAMERA_PRESET)] then return false end
   if FREECAM.on or FREECAM.orbiting or read_f32(CAMERA_FADE_RADIUS) == 0 then return false end
-  return true
+  return (G.call(ctx, G.STORE_OPEN, {}) & 0xFF) == 0
 end
 
 -- ================================================================ give items
@@ -594,7 +595,7 @@ function E.setup(features)
       help = "How wide you see in first person (V): wider shows more of your arms, your gun as it fires and what's around you. First Person's own is " .. fp_default .. ".",
       update = function() end },
     { id = "shoulder_cam", label = "Over-the-shoulder camera", kind = "toggle", needs = "none", v = S("shoulder_camera", false),
-      help = "Walking around, the camera sits over your shoulder like GTA: you to one side, the aim in the middle. Aiming keeps the aim style's own camera." },
+      help = "Walking around, the camera sits over your shoulder like GTA: you to one side, the aim in the middle. Aiming keeps the aim style's own camera; stores and wardrobes the game's." },
     { id = "shoulder_side", label = "Shoulder offset", kind = "value", needs = "none", default = 0.6, min = -1.5, max = 1.5, step = 0.1,
       v = S("shoulder_offset", 0.6), oneshot = true,
       fmt = function(v)
@@ -840,7 +841,7 @@ function E.install(menu)
     ctx:call_original()
     local it = F.items.fp_fov
     if F.enabled and it.v ~= it.default and first_person_showing() then write_f32(G.CAMERA + CAM_FOV, it.v) end
-    local want = shoulder_wanted()
+    local want = shoulder_wanted(ctx)
     shoulder_blend = shoulder_blend + ((want and 1 or 0) - shoulder_blend) * 0.12
     if shoulder_blend < 0.01 then shoulder_blend = 0 end
     if read_f32(CAMERA_FADE_RADIUS) == 0 then shoulder_blend = 0 end   -- (first person: its camera, no move)

@@ -1,5 +1,15 @@
 # SR Tweak Menu - changes
 
+## 2.7.3
+
+- Precise Aim: the right stick no longer drifts on a controller. It treated
+  anything over 0.08 as a push and passed it on as past the game's own 0.24
+  deadzone, with either Precise Aim turning setting. It now uses 0.24 too.
+- New row, Weapons > Aiming & switching > Precise Aim stick deadzone, saved for
+  next time. 0.08 gives back the old light touch.
+- Over-the-shoulder camera steps aside while a store or wardrobe screen is open
+  and comes back when you leave it. The row itself stays on.
+
 ## 2.7.2
 
 - Fixed a crash on PCs whose saintsrow.exe refuses certain hooks (reported at

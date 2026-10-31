@@ -72,7 +72,7 @@ pages; every row has a help line in the menu.
 - **Aiming & switching:** Aim style (the game's own, Precise Aim or Fine Aim);
   **Precise Aim camera** (aim camera, zoom, field of view, height, shoulder,
   reset, save as my camera); Fine Aim zoom and spread; Aim button; Precise
-  Aim turning and aim turn speed; Fine Aim aim turn speed; Weapon switch,
+  Aim turning, aim turn speed and stick deadzone; Fine Aim aim turn speed; Weapon switch,
   Weapon switch D-pad, Weapon wheel tap
 - **Skins:** a colour for each of 18 weapons, and All back to the original
 - Give weapon (any, including the Pimp Slap), **Give weapons** (a page of

@@ -1261,6 +1261,30 @@ do
   F.items.precise_turning.v = 1; F.apply_precise_turning()
   local pa = M.aim_sens(); F.adjust(make_ctx(), F.items.precise_aim_turn, -1)
   assert(math.abs(M.aim_sens() - (pa - 0.1)) < 1e-6, "Precise aim turn speed")
+  -- Right stick deadzone: the game's 0.24 unless changed. A resting stick under it reads
+  -- as centred; before, anything over 0.08 was pushed past the game's own deadzone.
+  assert(aim_page.precise_stick_deadzone and math.abs(M.look_deadzone() - 0.24) < 1e-6, "Precise Aim deadzone starts at the game's")
+  local PAD = 0x00E00000
+  local function shaped(rx, ry)
+    wml.write_u16(PAD + 12, rx & 0xFFFF); wml.write_u16(PAD + 14, ry & 0xFFFF)
+    M.shape_stick(PAD, 1)
+    local x, y = wml.read_u16(PAD + 12), wml.read_u16(PAD + 14)
+    return x >= 0x8000 and x - 0x10000 or x, y >= 0x8000 and y - 0x10000 or y
+  end
+  local dx, dy = shaped(math.floor(0.15 * 32767), 0)
+  assert(dx == 0 and dy == 0, "a stick drifting to 0.15 reads as centred")
+  write_f32(0x832BAAE8 + 520, 0.24)
+  dx, dy = shaped(math.floor(0.15 * 32767), 0)
+  assert(dx == 0 and dy == 0, "centred with the game's deadzone read too")
+  dx = shaped(math.floor(0.5 * 32767), 0)
+  assert(math.abs(dx - 0.5 * 32767) < 64, "past the deadzone the stick is unchanged")
+  F.items.precise_stick_deadzone.v = 0.24
+  F.adjust(make_ctx(), F.items.precise_stick_deadzone, -1)
+  assert(math.abs(M.look_deadzone() - 0.22) < 1e-6, "Precise Aim deadzone row")
+  M.set_look_deadzone(0.08)
+  dx = shaped(math.floor(0.15 * 32767), 0)
+  assert(dx ~= 0, "a lower deadzone lets a small push through")
+  M.set_look_deadzone(0.24)
 end
 
 -- Help text: whole sentences, at most 90 characters a line and 3 lines;
@@ -1696,6 +1720,15 @@ do
   assert(math.abs(read_f32(CAMX + 44) - 10.6) < 0.01 and math.abs(read_f32(CAMX + 52) - 10.8) < 0.01
     and math.abs(read_f32(CAMX + 48) - 5) < 0.001, "shoulder camera moved, without drift: "
     .. read_f32(CAMX + 44) .. " " .. read_f32(CAMX + 52))
+  -- A store or wardrobe screen eases it out, and leaving brings it back.
+  local was_store = FAKE[0x82494208]
+  FAKE[0x82494208] = function(c) c:set_r(3, 1) end
+  for _ = 1, 80 do hooks[0x82109608](cam) end
+  assert(math.abs(read_f32(CAMX + 44) - 10) < 0.01 and math.abs(read_f32(CAMX + 52) - 10) < 0.01, "shoulder camera off in a store")
+  assert(F.items.shoulder_cam.v, "a store leaves the row on")
+  FAKE[0x82494208] = was_store
+  for _ = 1, 80 do hooks[0x82109608](cam) end
+  assert(math.abs(read_f32(CAMX + 44) - 10.6) < 0.01, "shoulder camera back after the store")
   F.items.shoulder_cam.v = false
   for _ = 1, 80 do hooks[0x82109608](cam) end
   assert(math.abs(read_f32(CAMX + 44) - 10) < 0.01 and math.abs(read_f32(CAMX + 52) - 10) < 0.01, "shoulder camera eased out")

@@ -37,7 +37,7 @@ local TABS = {
       { "rocket_ammo", "fire_ammo", "money_gun", "money_gun_cash", "explosive_punch", "punch_blast" }),
     page("weapons_aiming", "Aiming & switching", "Aim style (Precise Aim, Fine Aim) and its camera, the aim button, turning while aiming, and weapon switch.",
       { "aim_style", "aim_camera_page", "fine_aim_zoom", "fine_aim_spread", "aim_button", "precise_turning", "precise_aim_turn",
-        "fine_aim_turn", "weapon_switch", "weapon_dpad", "weapon_tap" }),
+        "precise_stick_deadzone", "fine_aim_turn", "weapon_switch", "weapon_dpad", "weapon_tap" }),
     page("weapons_skins", "Skins", "A colour for each weapon: gold, black, silver, tan, olive and more. Every copy of the gun changes, NPCs' too.",
       { "skin_k6_krukov", "skin_vice_9", "skin_nr4", "skin_ar40_xtnd", "skin_skr7_spree", "skin_44_shepherd", "skin_tombstone",
         "skin_12_gauge", "skin_as12_riot", "skin_mcmanus", "skin_rpg", "skin_platinum_rpg", "skin_nightstick", "skin_crowbar",
