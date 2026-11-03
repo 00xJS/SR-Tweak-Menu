@@ -39,6 +39,10 @@ G.P = {
 }
 -- Bits in the flags word at +216.
 G.FLAG = { INVULNERABLE = 0x00100000, PERFECT_AIM = 0x00200000, NO_RAGDOLL = 0x00800000, NO_FLINCH = 0x40 }
+-- 0x824497F0(human, ms, ...) knocks a human down; it's the only reader of
+-- NO_RAGDOLL and refuses while it's set. 0x825807A8 (leaving a car) calls
+-- it from three places (returns 0x82580F20, 0x82581064, 0x8258119C).
+G.KNOCKDOWN = 0x824497F0
 -- Bits in the word at +212 (bit 1 is the game's dirty flag).
 G.FLAG212 = { NO_EXPLOSION_FLING = 2, NO_KNEECAP = 4 }
 

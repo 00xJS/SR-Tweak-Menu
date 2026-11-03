@@ -798,6 +798,32 @@ do
   write_u32(V + 54688, 0); write_u32(V + 46592, 0); put_in_vehicle(false); update(1)
 end
 
+-- No ragdoll: knockdowns of the player from leaving a car (pulled out,
+-- bailing out, thrown out) go through with the flag off for that call and
+-- back on after; any other knockdown is left to the game (which refuses).
+do
+  F.items.no_ragdoll.v = true
+  update(1)
+  assert((read_u32(P + 216) & 0x00800000) ~= 0, "no ragdoll flag not set")
+  local seen
+  local function knock(from)
+    local c = make_ctx(); c.regs[3] = P
+    function c:lr() return from end
+    seen = nil
+    c.call_original = function() seen = read_u32(P + 216) & 0x00800000 end
+    hooks[0x824497F0](c)
+  end
+  for _, from in ipairs({ 0x82580F20, 0x82581064, 0x8258119C }) do
+    knock(from)
+    assert(seen == 0, string.format("knockdown from %08X should run with the flag off", from))
+    assert((read_u32(P + 216) & 0x00800000) ~= 0, "no ragdoll flag not put back")
+  end
+  knock(0x82463558)
+  assert(seen ~= 0, "other knockdowns should still meet the flag")
+  F.items.no_ragdoll.v = false
+  update(1)
+end
+
 -- Filters: saturation and tint written every update while on, the
 -- post-process look set once; Off puts them back.
 do

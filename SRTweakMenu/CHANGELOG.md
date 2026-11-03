@@ -1,5 +1,13 @@
 # SR Tweak Menu - changes
 
+## 2.9.1
+
+- No ragdoll: being pulled out of your car by a carjacker, or bailing out of
+  a moving car, no longer leaves you frozen on the ground. The game waits for
+  the knockdown that ends those moves and asked for it every frame while No
+  ragdoll refused; now you're knocked down once and get up. Every other
+  knockdown is still refused.
+
 ## 2.9.0
 
 - New rows on Vehicles > Look: Licence plate number, Custom plate text and

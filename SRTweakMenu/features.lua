@@ -413,7 +413,7 @@ category("Player", {
   { id = "no_bust", label = "Never busted", kind = "toggle", needs = "none", byte = { G.VAR.ALLOW_BUST, 0, 1 },
     help = "" },
   { id = "no_ragdoll", label = "No ragdoll", kind = "toggle", pbits = G.FLAG.NO_RAGDOLL | G.FLAG.NO_FLINCH, p212 = G.FLAG212.NO_EXPLOSION_FLING | G.FLAG212.NO_KNEECAP,
-    help = "You can't be knocked down, staggered or thrown." },
+    help = "You can't be knocked down, staggered or thrown. Being pulled out of a car or bailing out of a moving one still knocks you down (the game waits for it)." },
   { id = "perfect_aim", label = "Perfect aim", kind = "toggle", pbits = G.FLAG.PERFECT_AIM,
     help = "Every shot goes exactly where you aim." },
   { id = "run", label = "Run boost", kind = "toggle", v = S("run_boost", false),
@@ -6436,6 +6436,33 @@ end
 
 -- Made for a mix: the variation the game rolls is this copy.
 F.look_synth = nil
+-- No ragdoll refuses every knockdown, but some of the game's moves end in
+-- one and wait for it: pulled out of your car by a carjacker you were left
+-- frozen in the thrown pose, and the same bailing out of a moving car: the
+-- game asks again every frame until it gets it. Leaving a car (0x825807A8)
+-- is the one place found that does that: its three knockdowns go through
+-- (pulled out 0x82580F20, bailing out 0x82581064, thrown out 0x8258119C).
+F.KNOCKDOWN_ALLOWED = { [0x82580F20] = true, [0x82581064] = true, [0x8258119C] = true }
+G.hook(G.KNOCKDOWN, function(ctx)
+  local victim = ctx:r(3)
+  local p = victim ~= 0 and G.player() or 0
+  if p ~= 0 and victim == p and (read_u32(p + 216) & G.FLAG.NO_RAGDOLL) ~= 0 then
+    local from = ctx:lr()
+    local allow = F.KNOCKDOWN_ALLOWED[from]
+    if F.debug then
+      wml.log(string.format("no ragdoll: knockdown from %08X %s (state %d, anim %d, car %08X)", from,
+        allow and "let through" or "refused", read_u32(p + G.P.STATE), read_u32(p + G.ANIM_STATE), read_u32(p + G.P.VEHICLE)))
+    end
+    if allow then
+      write_u32(p + 216, read_u32(p + 216) & ~G.FLAG.NO_RAGDOLL)
+      ctx:call_original()
+      write_u32(p + 216, read_u32(p + 216) | G.FLAG.NO_RAGDOLL)
+      return
+    end
+  end
+  ctx:call_original()
+end)
+
 G.hook(G.VARIANT_ROLL, function(ctx)
   local s = F.look_synth
   if s then F.look_synth = nil; ctx:set_r(4, s) end
