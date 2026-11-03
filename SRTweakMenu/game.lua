@@ -104,6 +104,23 @@ G.PALETTE_COUNT  = 0x83710108
 G.SLOT_TYPES     = 0x8371012C  -- *: slot types of 16 bytes; 46 = Body Color, 47 = Trim Color
 G.FIT_PART       = 0x8254C848  -- (state, part, 0)
 G.SET_COLOUR     = 0x8254CA48  -- (state, part, colour slot, colour record)
+-- The garage's blob of a car's look: 0x8254DAF8(state, buf, 320) writes it
+-- (u32 0x0A55B00B, u8 n, the n picks of the car's look, then the parts and
+-- colours), 0x8254DCC0(state, buf) rebuilds the car from one (and makes a new
+-- state at vehicle+54688).
+G.CUST_SAVE, G.CUST_APPLY, G.CUST_MAGIC = 0x8254DAF8, 0x8254DCC0, 0x0A55B00B
+-- vehicle+46592 (+220 +46372): the car's look. +332 the version picked for
+-- each material with versions (a word each), +640 how many picks, +644 the
+-- picks (a byte each, in the order made; the materials' come last); +8 ->
+-- +48 the mesh's variation data: +50 how many materials have versions, +52
+-- those materials (16 bytes: +0 name hash, +10 how many versions).
+G.CAR_LOOK       = 46592
+-- Its parts (bumpers, doors ...): how many at vehicle+248, 688 bytes each
+-- from +252, a part's own look at +72 (some cars' plates are on a part).
+G.CAR_PARTS_COUNT, G.CAR_PARTS, G.CAR_PART_SIZE = 248, 252, 688
+-- 0x82230EC8(look, ...) picks the car's look; 0x82231330(part look, car's
+-- look, ...) a part's (the car's picks first, then its own materials').
+G.LOOK_BUILD, G.PART_LOOK_BUILD = 0x82230EC8, 0x82231330
 
 -- Guns. The fire function decides bullet or projectile by the weapon's
 -- Ammo_Type (+100: 0 bullet, 1 projectile); the projectile path spawns the

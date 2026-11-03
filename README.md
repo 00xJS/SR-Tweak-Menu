@@ -86,8 +86,10 @@ pages; every row has a help line in the menu.
 - **Handling:** Extra car grip, Nitrous in every vehicle (on from the next
   start), Extra top speed, Bouncy cars and Bounce strength, Less stiff cars
   and Spin damping
-- **Look:** **Customize vehicle**, Paint vehicle, Secondary color, Brake
-  lights when stopped
+- **Look:** **Customize vehicle**, Paint vehicle, Secondary color, Licence
+  plate number (Random, Custom or a preset), **Custom plate text** (your own
+  plate, up to 5 characters, centred), Licence plate style (Stilwater or Bill
+  Ender Autos), Brake lights when stopped
 - **Driving camera:** Free camera in cars, Camera resets after (moving and
   stopped), Camera swing-back speed, Camera follows the nose, Free drive-by
   camera, No camera swing getting in, Field of view at top speed

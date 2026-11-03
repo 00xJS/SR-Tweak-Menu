@@ -27,6 +27,8 @@ SRTweakMenu/saved_tweaks.ini
 SRTweakMenu/quicksave.dat
 # your saved places (Teleport > Saved places)
 SRTweakMenu/saved_places.txt
+# your custom licence plate (Vehicles > Look > Custom plate text)
+SRTweakMenu/custom_plate.txt
 # made from the game's HUD sheets: game data, never in the repository
 SRTweakMenu/hud_images.bin
 SRTweakMenu/hud_polish.bin

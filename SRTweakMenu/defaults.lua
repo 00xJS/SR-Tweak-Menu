@@ -23,7 +23,7 @@ local F, forget_saved
 local CHOICE_DEFAULTS = {
   weather = 1, filter = 1, render_mode = 1, cam_mode = 1, aim_style = 1, aim_button = 1, precise_turning = 1,
   weapon_dpad = 1, weapon_tap = 1, punch_blast = 2, line_rate = 3, missing_moves = 1, loose_parts = 2, look_pose = 1,
-  sky_type = 1, work_boots = 1,
+  sky_type = 1, work_boots = 1, plate_number = 1, plate_style = 1,
 }
 -- Numbers that only say how much of something to do now, not a setting.
 local NOT_SETTINGS = { give_item_count = true, menu_background = true }

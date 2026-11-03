@@ -75,6 +75,10 @@ local function MENU_OPEN() return F_menu_open end
 local F = { categories = {}, items = {}, enabled = true, debug = false, spawn_queue = {}, guard_queue = {}, guards_joining = {}, scene_queue = {}, scene_actors = {} }
 F.FREECAM = FREECAM
 
+-- Licence plate rows: the number (six digits) and the plate's look.
+F.PLATE_NUMBERS = { "Game's own", "Random", "Custom", "000000", "111111", "123456", "777777", "987654" }
+F.PLATE_STYLES = { "Game's own", "Stilwater", "Bill Ender Autos" }
+
 -- Paints: { key, name, palette, colour }. Palettes 0-5 hold the same 80
 -- colours with different finishes (Opaque, Matte, Gloss, Candy, Metallic,
 -- Pearlescent); 11 is Iridescent (the gang colours among them); 7 is Metal,
@@ -1041,6 +1045,19 @@ category("Vehicles", {
       F.second_paint = { vehicle = v, pal = paint[3], col = paint[4] }
       return "Second colour " .. paint[2] .. (why and (" (" .. why .. ")") or "")
     end },
+  { id = "plate_number", label = "Licence plate number", kind = "choice", needs = "none", options = F.PLATE_NUMBERS,
+    help = "The plate of every car you drive. Random gives each car a new number; Custom puts your own text on it (Custom plate text). Default Game's own.",
+    change = function(ctx, p, v, it) return F.plate_change(ctx, p, v, it, "Licence plate") end },
+  { id = "plate_text", label = "Custom plate text", kind = "page", needs = "none",
+    help = "Type your plate: up to 5 letters and digits, centred on the plate. Shows when Licence plate number is Custom. Default SAINT.",
+    open = function() return F.plate_text_page() end },
+  { id = "plate_card", label = "Plate test card", kind = "toggle", needs = "none", nosave = true,
+    hidden = function() return not F.debug end,
+    help = "Debug builds: a grid on your car's plate and a colour on each square, to measure where the squares land.",
+    change = function(ctx, p, v, it) return F.plate_card(ctx, p, v, it) end },
+  { id = "plate_style", label = "Licence plate style", kind = "choice", needs = "none", options = F.PLATE_STYLES,
+    help = "The plate itself on every car you drive: the Stilwater plate, or the Bill Ender Autos dealer frame. Default Game's own.",
+    change = function(ctx, p, v, it) return F.plate_change(ctx, p, v, it, "Plate style") end },
   { id = "boom", label = "Destroy vehicle", kind = "action", needs = "vehicle", help = "",
     run = function(ctx) G.console(ctx, "boom"); return "Boom" end },
   { id = "spawn_vehicle", label = "Spawn vehicle", kind = "list", items = VEHICLES.spawn, needs = "player",
@@ -2064,6 +2081,7 @@ function F.update(ctx)
     last_vehicle, last_handle = v, h
   end
   if v ~= 0 then apply_vehicle_bits(v) end
+  safe(F.items.plate_number, F.update_plate, ctx, v, h)
 
   local pbits, p212 = 0, 0
   for _, it in pairs(F.items) do
@@ -3247,6 +3265,304 @@ function F.paint_car(ctx, vehicle, which, pal, col)
   if F.debug then wml.log(string.format("paint: %s pal %d col %d on part %08X slot %d", which, pal, col, part, colour_index)) end
   return true, note
 end
+
+-- ------------------------------------------------------------ licence plate
+--
+-- A plate is seven materials: PlateA the plate (Stilwater, or the Bill
+-- Ender Autos dealer frame) and PlateB..G its six digits, 0 to 9 (the game
+-- has no letters). The game picks a version of each when it builds a look:
+-- the car's own (most cars) or a part's, like the bumpers (the Aqua). A
+-- look keeps its picks at +332 (one word per material) and logs them at +644,
+-- and the car's render materials are made from +332. So the plate changes
+-- by rebuilding the car the garage's way (its blob back on the car: paint
+-- and parts stay) with the picks set as each look is built.
+--
+-- A custom plate is drawn into six of the digit pictures and the dealer
+-- plate (plate_text.lua); your car gets those, and while it's shown every
+-- other car built keeps to the four digits and the Stilwater plate left
+-- alone.
+(function()
+local PT = require("plate_text")
+local PLATE_PLACE = { [0xA5BD094B] = 0, [0x3CB458F1] = 1, [0x4BB36867] = 2, [0xD5D7FDC4] = 3,
+  [0xA2D0CD52] = 4, [0x3BD99CE8] = 5, [0x4CDEAC7E] = 6 }   -- PlateA..G, B..G left to right
+-- A digit's version: the textures go zlp_0, zlp_9, zlp_8 ... zlp_1. The
+-- plate's: 0 Stilwater, 1 Bill Ender Autos.
+local function digit_version(d) return d == 0 and 0 or 10 - d end
+local CUSTOM = 3                         -- plate_number's Custom
+local TRAFFIC_DIGITS = { 0, 7, 8, 9 }    -- the versions a custom plate leaves alone
+
+-- The custom text, kept in custom_plate.txt.
+local TEXT_FILE = wml.mod_folder .. "/custom_plate.txt"
+F.plate_custom_text = "SAINT"
+do
+  local f = io.open(TEXT_FILE, "r")
+  if f then
+    local t = PT.clean((f:read("l") or ""):match("^%s*(.-)%s*$"))
+    f:close()
+    if t ~= "" then F.plate_custom_text = t end
+  end
+end
+local function show_text() F.items.plate_text.label = "Custom plate text: " .. F.plate_custom_text end
+show_text()
+local function save_text()
+  show_text()
+  local f = io.open(TEXT_FILE, "w")
+  if not f then return false end
+  f:write(F.plate_custom_text, "\n")
+  f:close()
+  return true
+end
+
+-- A look's plate materials: { { place, index, versions, materials } ... }, or nil.
+local function plate_mats(look)
+  if not G.pointer_ok(look) then return nil end
+  local mesh = read_u32(look + 8)
+  local data = G.pointer_ok(mesh) and read_u32(mesh + 48) or 0
+  if not G.pointer_ok(data) then return nil end
+  local m, mats = read_u16(data + 50), read_u32(data + 52)
+  if m == 0 or m > 64 or not G.pointer_ok(mats) then return nil end
+  local found
+  for i = 0, m - 1 do
+    local place = PLATE_PLACE[read_u32(mats + i * 16)]
+    if place then
+      found = found or {}
+      found[#found + 1] = { place, i, read_u16(mats + i * 16 + 10), m }
+    end
+  end
+  return found
+end
+
+-- The car's own look and its parts' looks.
+local function looks(vehicle)
+  local t = { read_u32(vehicle + G.CAR_LOOK) }
+  local n = read_u32(vehicle + G.CAR_PARTS_COUNT)
+  if n > 64 then n = 0 end
+  for i = 0, n - 1 do t[#t + 1] = read_u32(vehicle + G.CAR_PARTS + i * G.CAR_PART_SIZE + 72) end
+  return t
+end
+
+-- The plate as it is: { [0..6] = version }, or nil for a car without one.
+function F.plate_read(vehicle)
+  local now
+  for _, look in ipairs(looks(vehicle)) do
+    for _, pm in ipairs(plate_mats(look) or {}) do
+      now = now or {}
+      if now[pm[1]] == nil then now[pm[1]] = read_u32(look + 332 + pm[2] * 4) end
+    end
+  end
+  return now
+end
+
+-- As each look is built: while the menu rebuilds a car, the plate it asks
+-- for ({ [place] = version }); while a custom plate is shown, any other car
+-- off the custom pictures.
+local forcing = nil
+local function force(look)
+  if not forcing and not PT.active then return end
+  local mats = plate_mats(look)
+  if not mats then return end
+  local n = read_u32(look + 640)
+  for _, pm in ipairs(mats) do
+    local want
+    if forcing then
+      want = forcing[pm[1]]
+    else
+      local v = read_u32(look + 332 + pm[2] * 4)
+      if pm[1] == 0 then want = v == 1 and 0 or nil
+      elseif v >= 1 and v <= 6 then want = TRAFFIC_DIGITS[v % 4 + 1] end
+    end
+    if want and want < pm[3] then
+      write_u32(look + 332 + pm[2] * 4, want)
+      local at = n - math.min(pm[4], 64) + pm[2]
+      if at >= 0 and at < n and at < 64 then write_u8(look + 644 + at, want) end
+    end
+  end
+end
+G.hook(G.LOOK_BUILD, function(ctx)
+  local look = ctx:r(3)
+  ctx:call_original()
+  force(look)
+end)
+G.hook(G.PART_LOOK_BUILD, function(ctx)
+  local look = ctx:r(3)
+  ctx:call_original()
+  force(look)
+end)
+
+-- The custom pictures the rows ask for: "text", "card" or nil.
+local function custom_kind()
+  if F.plate_card_on then return "card" end
+  if F.items.plate_number.v == CUSTOM then return "text" end
+end
+
+-- Puts the custom pictures in (or the game's own back). Returns nil, or why not.
+local function show_custom()
+  local kind = custom_kind()
+  if not kind then PT.hide() return nil end
+  local ok, why
+  if kind == "card" then ok, why = PT.show_card()
+  else ok, why = PT.show(F.plate_custom_text, F.items.plate_style.v == 3 and 2 or 1) end
+  if not ok then
+    if F.debug then
+      wml.log("plate: custom plate not drawn: " .. tostring(why))
+      if not F.plate_scanned then F.plate_scanned = true; PT.scan("zlp", wml.log); PT.scan("anaconda", wml.log) end
+    end
+    return "Couldn't draw the plate (" .. tostring(why) .. ")"
+  end
+end
+
+-- What the rows ask for: { [place] = version } (nil = the car's own) and
+-- what to call it.
+local function plate_wanted(car)
+  local num, style = F.items.plate_number.v, F.items.plate_style.v
+  local want = {}
+  if custom_kind() then
+    for k = 0, 6 do want[k] = k == 0 and 1 or k end
+    return want, custom_kind() == "card" and "the test card" or F.plate_custom_text
+  end
+  local digits
+  if num == 2 then
+    digits = car.random
+    if not digits then
+      digits = ""
+      for _ = 1, 6 do digits = digits .. tostring(F.random(0, 9)) end
+      car.random = digits
+    end
+  elseif num > CUSTOM then
+    digits = F.PLATE_NUMBERS[num]
+  end
+  if digits then for k = 1, 6 do want[k] = digit_version(tonumber(digits:sub(k, k))) end end
+  if style > 1 then want[0] = style - 2 end
+  return want, (digits or "the car's own number") .. (style > 1 and (", " .. F.PLATE_STYLES[style]) or "")
+end
+
+local function plate_text(p)
+  local t = {}
+  for k = 0, 6 do t[#t + 1] = p[k] and tostring(p[k]) or "-" end
+  return table.concat(t, " ")
+end
+
+-- The car the plate rows last changed: { v, h, own plate, random digits }.
+F.plate_car = nil
+
+-- Sets the plate of `vehicle` from the rows (the car's own plate back for
+-- Game's own). Returns a message, or nil when there's nothing to do.
+function F.apply_plate(ctx, vehicle, handle)
+  local why = show_custom()
+  if why then return why end
+  local now = F.plate_read(vehicle)
+  local state = read_u32(vehicle + G.CUST_STATE)
+  if not now or not G.pointer_ok(state) then
+    if F.debug then wml.log(string.format("plate: none on %08X", vehicle)) end
+    return "This vehicle has no licence plate"
+  end
+  if G.broken[G.LOOK_BUILD] or G.broken[G.PART_LOOK_BUILD] then return "Licence plates are off (a hook the game refused)" end
+  local car = F.plate_car
+  if not car or car.v ~= vehicle or car.h ~= handle then
+    car = { v = vehicle, h = handle }
+    F.plate_car = car
+  end
+  car.done = true
+  if not car.own then car.own = now end
+  local want, label = plate_wanted(car)
+  for k = 0, 6 do if want[k] == nil then want[k] = car.own[k] end end
+  car.want = want
+  local changed = false
+  for k = 0, 6 do if now[k] ~= nil and want[k] ~= nil and now[k] ~= want[k] then changed = true end end
+  if F.debug then wml.log("plate: " .. plate_text(now) .. " -> " .. plate_text(want) .. (changed and ", rebuilding" or "")) end
+  if not changed then return nil end
+  local buf = G.buffer(ctx, 0)
+  G.call(ctx, G.CUST_SAVE, { state, buf, 320 })
+  if read_u32(buf) ~= G.CUST_MAGIC then return "Couldn't read this car" end
+  forcing = want
+  local ok, err = pcall(G.call, ctx, G.CUST_APPLY, { state, buf })
+  forcing = nil
+  if not ok then error(err) end
+  if F.debug then wml.log("plate: now " .. plate_text(F.plate_read(vehicle) or {})) end
+  return "Plate: " .. label
+end
+
+-- Each car you drive gets the plate a moment after you're in, and again if
+-- the game builds its look anew (a repair, say).
+function F.update_plate(ctx, v, h)
+  if v == 0 or not F.enabled then return end
+  if F.items.plate_number.v == 1 and F.items.plate_style.v == 1 and not F.plate_card_on then
+    if not (F.plate_car and F.plate_car.v == v) then return end
+  end
+  local car = F.plate_car
+  if car and car.v == v and car.h == h and car.done then
+    if car.want and F.tick % 100 == 0 then
+      local now = F.plate_read(v)
+      for k = 0, 6 do
+        if now and now[k] ~= nil and now[k] ~= car.want[k] then F.apply_plate(ctx, v, h) return end
+      end
+    end
+    return
+  end
+  if not car or car.v ~= v or car.h ~= h then
+    F.plate_car = { v = v, h = h, at = F.tick + 25 }
+    return
+  end
+  if car.at and F.tick < car.at then return end
+  car.done = true
+  F.apply_plate(ctx, v, h)
+end
+
+-- The page for typing the custom plate (keyboard typing works here too).
+local LETTERS = {}
+for c in PT.CHARS:gmatch(".") do LETTERS[#LETTERS + 1] = { c, c == " " and "(space)" or c } end
+function F.plate_text_page()
+  local draft = F.plate_custom_text
+  local text_row = { label = "", kind = "header" }
+  local function show() text_row.label = "Plate: " .. (draft ~= "" and draft or "(empty)") .. "_" end
+  local function add(c) draft = PT.clean(draft .. c); show() end
+  local letter
+  letter = { id = "plate_letter", label = "Add a letter", kind = "list", needs = "none", items = LETTERS, v = 1,
+    help = string.format("Left / Right picks a letter, Enter adds it (up to %d). On the keyboard you can just type (Shift for capitals).", PT.MAX),
+    run = function() add(LETTERS[letter.v][1]); return nil end }
+  local pg
+  pg = { title = "Custom plate", typing = true, rows = {
+    text_row,
+    letter,
+    { label = "Delete last letter", kind = "action", needs = "none", help = "Takes the last letter off.",
+      run = function() draft = draft:sub(1, -2); show() end },
+    { label = "Clear", kind = "action", needs = "none", help = "Starts again from nothing.",
+      run = function() draft = ""; show() end },
+    { id = "plate_text_use", label = "Use this plate", kind = "action", needs = "none",
+      help = "Saves the text and puts it on your car (Licence plate number: Custom).",
+      run = function(ctx, p)
+        if draft:match("^%s*$") then return "Type something first" end
+        F.plate_custom_text = draft
+        save_text()
+        F.items.plate_number.v = CUSTOM
+        if F.save_now then F.save_now(F.items.plate_number) end
+        pg.close_after = 1
+        local v = p ~= 0 and G.vehicle_object(p) or nil
+        if not v then
+          local why = show_custom()
+          return why or ("Plate " .. draft .. ": on the next car you drive")
+        end
+        return F.apply_plate(ctx, v, read_u32(p + G.P.VEHICLE)) or ("Plate: " .. draft)
+      end },
+  } }
+  pg.type = function(c) add(c) end
+  show()
+  return pg
+end
+
+-- The plate rows' change: the car you're in now, else the pictures only.
+function F.plate_change(ctx, p, v, it, what)
+  if v == 0 then return show_custom() or (what .. ": " .. it.options[it.v] .. " (on the next car you drive)") end
+  return F.apply_plate(ctx, v, read_u32(p + G.P.VEHICLE)) or (what .. ": " .. it.options[it.v])
+end
+
+-- The test card's switch (debug builds): measures where the squares land.
+function F.plate_card(ctx, p, v, it)
+  F.plate_card_on = it.v
+  if v == 0 then return show_custom() or ("Plate test card " .. (it.v and "on" or "off")) end
+  return F.apply_plate(ctx, v, read_u32(p + G.P.VEHICLE)) or ("Plate test card " .. (it.v and "on" or "off"))
+end
+end)();
 
 -- Customize Vehicle: every slot the car has (the garage's names for them:
 -- vehicle_cust.lua), each part fitted the way the garage fits it

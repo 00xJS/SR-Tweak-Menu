@@ -205,7 +205,7 @@ end
 -- The game is always the Windows build (under Wine on the Mac), and menu.lua
 -- draws through the overlay only there; look like it on any host.
 package.config = "\\" .. package.config:sub(2)
-os.remove(TMP .. "/saved_tweaks.ini"); os.remove(TMP .. "/quicksave.dat"); os.remove(TMP .. "/saved_places.txt")
+os.remove(TMP .. "/saved_tweaks.ini"); os.remove(TMP .. "/quicksave.dat"); os.remove(TMP .. "/saved_places.txt"); os.remove(TMP .. "/custom_plate.txt")
 -- The loader refuses some hooks (as it did for 0x8210C3F8 here, and for the
 -- notoriety meter 0x82481990 on a player's PC, with an error that itself
 -- failed to format): only what needs them goes, the menu loads and opens.
@@ -663,6 +663,139 @@ do
   msg = F.activate(make_ctx(), F.items.paint2)
   assert(msg == "This vehicle has no second colour", msg)
   write_u32(V + 54688, 0); put_in_vehicle(false); update(1)
+end
+
+-- Licence plate: the plate materials found by name, on the car's own look
+-- or on a part's (the Aqua's bumpers); the car rebuilt the garage's way with
+-- each look's picks set as it's built; Game's own puts the car's own back.
+do
+  put_in_vehicle(true)
+  local STATE, BODY, PART, MESH_B, MESH_P, DATA_B, DATA_P, MATS_B, MATS_P =
+    0x52000000, 0x52010000, 0x52020000, 0x52011000, 0x52021000, 0x52012000, 0x52022000, 0x52013000, 0x52023000
+  write_u32(V + 54688, STATE); write_u32(V + 46592, BODY)
+  write_u32(V + 248, 2); write_u32(V + 252 + 72, 0); write_u32(V + 252 + 688 + 72, PART)
+  local function look(at, mesh, data, mats, hashes, counts)
+    write_u32(at + 8, mesh); write_u32(mesh + 48, data); write_u16(data + 50, #hashes); write_u32(data + 52, mats)
+    for i, h in ipairs(hashes) do write_u32(mats + (i - 1) * 16, h); write_u16(mats + (i - 1) * 16 + 10, counts[i]) end
+    write_u32(at + 640, 3 + #hashes)
+  end
+  -- the body: two paint materials; the part: the plate (PlateF, B, C, G, E, A, D: the cars' order)
+  look(BODY, MESH_B, DATA_B, MATS_B, { 0x065D6E78, 0x2893E0ED }, { 15, 2 })
+  local hashes = { 0x3BD99CE8, 0x3CB458F1, 0x4BB36867, 0x4CDEAC7E, 0xA2D0CD52, 0xA5BD094B, 0xD5D7FDC4 }
+  look(PART, MESH_P, DATA_P, MATS_P, hashes, { 10, 10, 10, 10, 10, 2, 10 })
+  local own = { 9, 9, 9, 9, 9, 0, 9 }
+  local function roll() for i, v in ipairs(own) do write_u32(PART + 332 + (i - 1) * 4, v); write_u8(PART + 644 + 2 + i, v) end end
+  roll()
+  local applied = 0
+  FAKE[0x8254DAF8] = function(ctx) write_u32(ctx.regs[4], 0x0A55B00B) end
+  -- the rebuild: the car's look, then each part's, each picked again by the game
+  FAKE[0x8254DCC0] = function(ctx)
+    applied = applied + 1
+    local c = make_ctx(); c.regs[3] = BODY; hooks[0x82230EC8](c)
+    c = make_ctx(); c.regs[3] = PART; c.call_original = roll; hooks[0x82231330](c)
+  end
+  local function plate()
+    local t = {}
+    for i = 0, 6 do t[#t + 1] = tostring(read_u32(PART + 332 + i * 4)) end
+    return table.concat(t, ",")
+  end
+  local num, style = F.items.plate_number, F.items.plate_style
+  num.v = 5
+  local msg = F.adjust(make_ctx(), num, 1)                 -- 123456
+  assert(msg == "Licence plate number: 123456", msg)
+  assert(plate() == "5,9,8,4,6,0,7" and applied == 1, "plate " .. plate())   -- digit d is version 10 - d
+  assert(read_u8(PART + 644 + 3) == 5 and read_u8(PART + 644 + 9) == 7, "plate picks not logged")
+  style.v = 3                                              -- Bill Ender Autos
+  msg = style.change(make_ctx(), P, V, style)
+  assert(msg == "Plate: 123456, Bill Ender Autos" and plate() == "5,9,8,4,6,1,7", tostring(msg) .. " " .. plate())
+  F.adjust(make_ctx(), style, 2)                           -- Game's own
+  assert(plate() == "5,9,8,4,6,0,7", "plate style back " .. plate())
+  num.v = 2
+  F.adjust(make_ctx(), num, -1)                            -- Game's own
+  assert(plate() == "9,9,9,9,9,0,9" and applied == 4, "plate back " .. plate())
+  msg = num.change(make_ctx(), P, V, num)
+  assert(msg == "Licence plate: Game's own" and applied == 4, "nothing to change: " .. tostring(msg))
+  -- Outside a rebuild the game's own picks stand.
+  local c = make_ctx(); c.regs[3] = PART; c.call_original = function() write_u32(PART + 332, 7) end; hooks[0x82231330](c)
+  assert(read_u32(PART + 332) == 7, "plate forced outside the menu's rebuild")
+  roll()
+  -- Random: once per car, a moment after you're in; the same number while you stay.
+  num.v = 2
+  F.plate_car = nil
+  update(1); assert(applied == 4, "plate applied before the car settled")
+  update(30); assert(applied == 5, "random plate not applied")
+  local first = plate()
+  update(30); assert(applied == 5 and plate() == first, "random plate picked again")
+  roll()
+  -- Custom: the text drawn into six digit pictures and the dealer plate,
+  -- your car given those; other cars kept off them; Game's own puts the
+  -- pictures back.
+  local NAMES, TBL, LIST, RECS, PIX = 0x53000000, 0x82839BE0, 0x53001000, 0x53002000, 0x54000000
+  write_u32(TBL + 80, 1); write_u32(TBL + 84, LIST + 0x800); write_u32(LIST + 0x800, LIST)
+  write_u32(0x832B6024, RECS)
+  local texs = {}
+  for d = 0, 9 do texs[#texs + 1] = { string.format("zlp_%d.tga", d), 64, 64, PIX + (d // 5 == 0 and d or 9 - d) * 0x3000, d <= 4 and 0x10 or 0x20 } end
+  texs[#texs + 1] = { "zlpm_1.tga", 128, 64, PIX + 0x20000, 0 }
+  texs[#texs + 1] = { "zlpm_2.tga", 128, 64, PIX + 0x24000, 0 }
+  for i, t in ipairs(texs) do
+    local name = NAMES + i * 32
+    for k = 1, #t[1] do write_u8(name + k - 1, t[1]:byte(k)) end
+    write_u8(name + #t[1], 0)
+    write_u32(LIST + (i - 1) * 8, name); write_u16(LIST + (i - 1) * 8 + 4, i - 1)
+    local e = 0x53003000 + i * 0x48
+    write_u32(RECS + (i - 1) * 20 + 4, e)
+    write_u32(e, t[4]); write_u16(e + 4, t[2]); write_u16(e + 6, t[3]); write_u8(e + 20, t[5])
+  end
+  write_u16(LIST + #texs * 8 + 4, 0xFFFF)
+  for a = PIX + 0x20000, PIX + 0x20000 + 0x1FFF, 2 do write_u16(a, 0xFFFF) end   -- Stilwater: all white
+  local PT = require("plate_text")
+  local function nonzero(addr, w)
+    for _, off in ipairs(PT.blocks(w, 64)) do
+      for k = 0, 6, 2 do if read_u16(addr + off + k) ~= 0 then return true end end
+    end
+    return false
+  end
+  num.v = 3                                                -- Custom
+  msg = num.change(make_ctx(), P, V, num)
+  assert(msg == "Plate: SAINT", tostring(msg))
+  assert(plate() == "5,1,2,6,4,1,3", "custom plate on the car: " .. plate())
+  assert(nonzero(PIX + 0x24000, 128), "dealer plate not drawn")
+  for d = 4, 9 do
+    local base = PIX + (d // 5 == 0 and d or 9 - d) * 0x3000 + (d <= 4 and 0x1000 or 0)
+    assert(nonzero(base, 64), "digit picture " .. d .. " not drawn")
+  end
+  assert(not nonzero(PIX + 0x1000, 64), "digit 0 should be left alone")
+  assert(not nonzero(PIX + 0x3000 + 0x1000, 64), "digit 1 should be left alone")
+  -- another car built now: off the custom pictures
+  c = make_ctx(); c.regs[3] = PART; c.call_original = function() roll(); write_u32(PART + 332, 3); write_u32(PART + 332 + 20, 1) end
+  hooks[0x82231330](c)
+  assert(read_u32(PART + 332) == 9 and read_u32(PART + 332 + 20) == 0, "traffic plate on the custom pictures")
+  -- the text page: typed letters, then used
+  local pg = F.plate_text_page()
+  for _, r in ipairs(pg.rows) do if r.label == "Clear" then r.run(make_ctx(), P) end end
+  for ch in ("00xJS!"):gmatch(".") do pg.type(ch) end
+  assert(pg.rows[1].label == "Plate: 00xJS_", pg.rows[1].label)
+  roll()
+  for _, r in ipairs(pg.rows) do if r.id == "plate_text_use" then msg = r.run(make_ctx(), P) end end
+  assert(msg == "Plate: 00xJS" and F.plate_custom_text == "00xJS", tostring(msg))
+  assert(F.items.plate_text.label == "Custom plate text: 00xJS", F.items.plate_text.label)
+  local tf = io.open(TMP .. "/custom_plate.txt", "r")
+  assert(tf and tf:read("l") == "00xJS", "custom plate text not saved"); tf:close()
+  num.v = 1
+  msg = num.change(make_ctx(), P, 0, num)
+  assert(not nonzero(PIX + 0x24000, 128), "dealer plate not put back")
+  assert(not nonzero(PIX, 64), "digit 9 not put back")
+  roll()
+  -- A car without a plate.
+  write_u32(V + 248, 0)
+  num.v = 6
+  msg = num.change(make_ctx(), P, V, num)
+  assert(msg == "This vehicle has no licence plate", msg)
+  msg = num.change(make_ctx(), P, 0, num)
+  assert(msg == "Licence plate: 123456 (on the next car you drive)", msg)
+  num.v, style.v = 1, 1
+  F.plate_car = nil
+  write_u32(V + 54688, 0); write_u32(V + 46592, 0); put_in_vehicle(false); update(1)
 end
 
 -- Filters: saturation and tint written every update while on, the

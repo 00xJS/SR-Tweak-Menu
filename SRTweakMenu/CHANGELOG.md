@@ -1,5 +1,21 @@
 # SR Tweak Menu - changes
 
+## 2.9.0
+
+- New rows on Vehicles > Look: Licence plate number, Custom plate text and
+  Licence plate style, saved for next time. They change the plate of every car
+  you drive, a moment after you get in; paint and parts stay.
+- Licence plate number: Game's own, Random (a new number for each car),
+  Custom, or a preset (000000, 111111, 123456, 777777, 987654).
+- Custom plate text: type your own plate, up to 5 letters and digits, drawn
+  centred across the plate in the menu's own letters (lower case as small
+  capitals). Type on the keyboard, or pick letters with Left / Right. Kept in
+  custom_plate.txt.
+- Licence plate style: the Stilwater plate or the Bill Ender Autos dealer
+  frame (for a custom plate too).
+- While a custom plate is on, other cars' plates keep to the game's own
+  digits, so your text stays yours.
+
 ## 2.8.0
 
 - New Creator tab, for the new SR Creator mod (its own folder, ticked in the
