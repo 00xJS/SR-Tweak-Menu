@@ -41,6 +41,11 @@ SRTweakMenu/work_boots/
 # files itsMJQ's rows write while you play (Body type, HUD options)
 SRTweakMenu/body_gender.txt
 SRTweakMenu/hud_preferences.txt
+# SR Creator's chunk is made from the game's own (game data), and its saved
+# builds are written while you play
+*.bbchunk_xbox2
+SRCreator/build_*.txt
+SRCreator/scratch/
 # the copy of itsMJQ's version this was merged from
 MJQ-Version/
 

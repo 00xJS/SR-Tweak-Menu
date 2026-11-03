@@ -1762,6 +1762,30 @@ do
   local del = entry.rows[4].open()
   F.activate(make_ctx(), del.rows[1])
   assert(#MYP.list == 0, "deleted")
+  -- Creator tab: talks to SR Creator through its mailbox; says so when the mod isn't running.
+  local BOX = 0x00F08000
+  write_u32(BOX, 0)
+  F.items.creator_mode.v = true
+  local said = F.items.creator_mode.change(make_ctx(), P, true, F.items.creator_mode)
+  assert(said:find("isn't running") and F.items.creator_mode.v == false, "creator without SR Creator: " .. tostring(said))
+  assert(F.items.creator_place.hidden(), "piece rows hidden while creator is off")
+  write_u32(BOX, 0x53524352); write_u32(BOX + 4, 7); write_u32(BOX + 16, 1)
+  assert(not F.items.creator_place.hidden(), "piece rows shown while creator is on")
+  F.activate(make_ctx(), F.items.creator_place)
+  assert(read_u32(BOX + 4) == 8 and read_u32(BOX + 8) == 3, "place sends command 3")
+  F.items.creator_slot.v = 4
+  F.activate(make_ctx(), F.items.creator_save)
+  assert(read_u32(BOX + 8) == 8 and read_u32(BOX + 12) == 4, "save goes to the chosen build slot")
+  F.items.creator_piece.v = 5
+  F.items.creator_piece.change(make_ctx(), P, 5, F.items.creator_piece)
+  assert(read_u32(BOX + 8) == 2 and read_u32(BOX + 12) == 5, "piece choice sends its kind")
+  F.items.creator_camera.v = true
+  F.items.creator_camera.change(make_ctx(), P, true, F.items.creator_camera)
+  assert(read_u32(BOX + 8) == 12 and read_u32(BOX + 12) == 1, "build camera row sends command 12")
+  F.items.creator_grid.v = true
+  F.items.creator_grid.change(make_ctx(), P, true, F.items.creator_grid)
+  assert(read_u32(BOX + 8) == 13 and read_u32(BOX + 12) == 1, "grid row sends command 13")
+  write_u32(BOX, 0); write_u32(BOX + 16, 0); F.items.creator_mode.v = false
   print("forum rows: regen, sprint, D-pad heal and taunts, cars, gang cars, no guns, rewards and money rain OK")
 end
 

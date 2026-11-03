@@ -1,5 +1,18 @@
 # SR Tweak Menu - changes
 
+## 2.8.0
+
+- New Creator tab, for the new SR Creator mod (its own folder, ticked in the
+  mod loader): build stunt parks from 26 kinds of piece (ramps, kickers,
+  curves, a half pipe, platforms, bridges, blocks, towers, walls, a drum and
+  stairs). Rows: Creator mode, Build camera, Grid snap, Piece, Place, Snap to
+  last piece, Flip, Pick up nearest, Undo, Move whole build, Clear build, and
+  Save / Load to one of 5 build slots.
+- Builds clear when the game closes; save one to keep it.
+- Build camera flies on its own (WASD / left stick, E Q / RT LT, Shift faster)
+  and places the piece where you look; your character waits where they are.
+- Grid snap puts pieces on whole metres and turns them in 15 degree steps.
+
 ## 2.7.3
 
 - Precise Aim: the right stick no longer drifts on a controller. It treated

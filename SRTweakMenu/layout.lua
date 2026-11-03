@@ -70,6 +70,7 @@ local TABS = {
       { "free_cam", "cam_mode", "freeze_world" }),
     "settings_ui_plus" } },
   { "Teleport", { keep = true } },
+  { "Creator", { keep = true } },
   { "Models", { keep = true, add = { "missing_moves", "loose_parts" } } },
   { "Customize", { keep = true, add = { "outfit_back", "look_pose",
     page("customize_character", "Reactions and physics", "itsMJQ's reactive expressions, voice reactions, talking mouth and breast physics.",

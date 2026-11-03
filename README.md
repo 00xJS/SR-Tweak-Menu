@@ -129,6 +129,13 @@ pages; every row has a help line in the menu.
   music, mechanics), **Activities** (every activity by gang), **Strongholds**,
   Teleport to waypoint, Auto-teleport to waypoint
 
+### Creator
+Needs the SR Creator mod (below). Every row but the first shows once Creator
+mode is on.
+- Creator mode, Build camera, Grid snap, Piece, Place piece, Snap to last
+  piece, Flip piece, Pick up nearest, Undo last piece, Move whole build, Clear
+  build, Build slot, Save build, Load build
+
 ### Models
 - Model group, Player model, Switch to model, Restore Playa model, Reload
   character, Character dialogue, **Voice**
@@ -182,6 +189,26 @@ Restart the game after changing them.
 
 Don't tick the standalone Precise Aim, Fine Aim or Weapon Switch mods as well:
 SR Tweak Menu already includes them.
+
+## SR Creator
+
+A second mod in this repository (`SRCreator` folder, test build) for building
+stunt parks in the city out of 26 kinds of piece: ramps, kickers, curves, a
+half pipe, platforms, bridges, blocks, towers, walls, a drum and stairs. Pieces
+are solid: you can drive and jump them.
+
+- Copy `SRCreator` into your mods folder next to `SRTweakMenu` and tick
+  **SR Creator** in the mod loader.
+- It needs `sr_alwaysload01.bbchunk_xbox2` in its folder. That file is made
+  from your own copy of the game's chunk with `build_chunk.py`, so it is game
+  data and isn't in the repository.
+- F7 (or LB + Back) turns the creator on; the controls show on screen. The
+  Creator tab in the menu does the same with rows.
+- F6 (or Back) flies a build camera: WASD / left stick, E Q / RT LT up and
+  down, Shift faster. The piece goes where you look.
+- Builds clear when the game closes. Save one on the Creator tab (5 slots) to
+  keep it, and load it again any time.
+- Up to 26 pieces at once for now.
 
 ## Works with
 

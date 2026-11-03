@@ -1463,6 +1463,12 @@ category("Teleport", {
     run = function() return WAYPOINT.go_now() end },
 })
 
+-- ================================================================ Creator
+-- Stunt parks from the SR Creator mod's pieces (creator.lua talks to it).
+local CREATOR = require("creator")
+category("Creator", CREATOR.rows(S))
+CREATOR.attach(F)
+
 -- Movement style and the walk and run variants: in Customize (below Voice)
 -- as your Playa, in Models when you play as someone else.
 do
