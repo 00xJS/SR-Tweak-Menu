@@ -22,7 +22,7 @@ local T = {}
 local read_u8, read_u16, read_u32 = wml.read_u8, wml.read_u16, wml.read_u32
 local write_u16 = wml.write_u16
 
-T.MAX = 5            -- characters on a plate
+T.MAX = 7            -- characters on a plate, as on a real one
 
 -- ------------------------------------------------------------------ letters
 -- Each letter: strokes on a 6 x 10 box (x right, y down). L = a line through
@@ -124,7 +124,10 @@ T.SLOTS = {
   { 8.7, 20.15, 24.7, 48.15 }, { 24.7, 20.15, 40.7, 48.15 }, { 40.7, 20.15, 56.7, 48.15 },
   { 71.3, 20.15, 87.3, 48.15 }, { 87.3, 20.15, 103.3, 48.15 }, { 103.3, 20.15, 119.3, 48.15 },
 }
-T.ROW = { cy = 34.15, height = 22 }   -- centre line and letter height (strokes included)
+-- The text's centre line, letter height (strokes included) and the widest
+-- it may be: past that (6 or 7 characters) the letters shrink evenly, so
+-- every plate sits centred inside the squares' span (8.7 to 119.3).
+T.ROW = { cy = 34.15, height = 22, width = 108 }
 T.STROKE = 1.05                    -- stroke radius, in letter units (a letter is 10 tall)
 T.SPACING = 1.6                    -- between letters, in letter units
 
@@ -132,10 +135,11 @@ T.SPACING = 1.6                    -- between letters, in letter units
 -- the plate that's `foot` plate pixels wide.
 local function make_text(text)
   local r = T.STROKE
-  local s = T.ROW.height / (10 + 2 * r)                -- plate pixels per letter unit
   local adv = 6 + 2 * r + T.SPACING
   local n = #text
   local width = n > 0 and (n * adv - T.SPACING) or 0
+  local s = T.ROW.height / (10 + 2 * r)                -- plate pixels per letter unit
+  if width * s > T.ROW.width then s = T.ROW.width / width end
   local x0 = 64 - width * s / 2 + r * s                -- the first box's left edge
   local y0 = T.ROW.cy - 5 * s
   local chars = {}

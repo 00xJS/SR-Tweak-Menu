@@ -1,5 +1,11 @@
 # SR Tweak Menu - changes
 
+## 2.9.2
+
+- Custom plate text takes up to 7 characters, like a real plate (was 5).
+  Every plate is centred the same way; 6 or 7 characters come out a little
+  smaller so they fit inside the plate.
+
 ## 2.9.1
 
 - No ragdoll: being pulled out of your car by a carjacker, or bailing out of

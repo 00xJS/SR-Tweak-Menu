@@ -775,6 +775,14 @@ do
   for _, r in ipairs(pg.rows) do if r.label == "Clear" then r.run(make_ctx(), P) end end
   for ch in ("00xJS!"):gmatch(".") do pg.type(ch) end
   assert(pg.rows[1].label == "Plate: 00xJS_", pg.rows[1].label)
+  -- up to 7, and a long plate shrinks to stay inside the squares' span, centred
+  assert(PT.clean("ABCDEFGHI") == "ABCDEFG", PT.clean("ABCDEFGHI"))
+  local wide = PT.make_text("WWWWWWW")
+  local left, right
+  for x = 0, 127 do
+    if wide(x + 0.5, PT.ROW.cy, 1) > 0 then left = left or x; right = x end
+  end
+  assert(left >= 8 and right <= 120 and math.abs((left + right) / 2 - 63.5) <= 1, "7-letter plate off centre: " .. left .. "-" .. right)
   roll()
   for _, r in ipairs(pg.rows) do if r.id == "plate_text_use" then msg = r.run(make_ctx(), P) end end
   assert(msg == "Plate: 00xJS" and F.plate_custom_text == "00xJS", tostring(msg))

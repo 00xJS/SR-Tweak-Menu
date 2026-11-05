@@ -1049,7 +1049,7 @@ category("Vehicles", {
     help = "The plate of every car you drive. Random gives each car a new number; Custom puts your own text on it (Custom plate text). Default Game's own.",
     change = function(ctx, p, v, it) return F.plate_change(ctx, p, v, it, "Licence plate") end },
   { id = "plate_text", label = "Custom plate text", kind = "page", needs = "none",
-    help = "Type your plate: up to 5 letters and digits, centred on the plate. Shows when Licence plate number is Custom. Default SAINT.",
+    help = "Type your plate: up to 7 letters and digits, centred on the plate (6 or 7 come out a little smaller to fit). Shows when Licence plate number is Custom. Default SAINT.",
     open = function() return F.plate_text_page() end },
   { id = "plate_card", label = "Plate test card", kind = "toggle", needs = "none", nosave = true,
     hidden = function() return not F.debug end,
